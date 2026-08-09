@@ -1,0 +1,19 @@
+{
+  "name": "@sentrello/server",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "@sentrello/module-sdk": "*",
+    "@sentrello/licensing-client": "*",
+    "@sentrello/db": "*",
+    "@sentrello/module-crm": "*"
+  },
+  "devDependencies": {
+    "jose": "^6.0.0"
+  }
+}

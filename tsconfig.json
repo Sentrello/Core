@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/module-sdk" },
+    { "path": "./packages/licensing-client" },
+    { "path": "./packages/db" },
+    { "path": "./packages/modules-free/crm" },
+    { "path": "./apps/server" },
+    { "path": "./scripts" }
+  ]
+}

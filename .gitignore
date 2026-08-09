@@ -1,0 +1,19 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+# NEVER commit private keys
+secrets/
+*.pem
+!scripts/*.example
+.DS_Store
+
+# Local-only build plans (contain commercial/control-plane strategy — keep out of the public repo)
+docs/plan/
+00-START-HERE.md
+MANIFEST.txt
+
+# local Claude Code settings
+.claude/settings.local.json

@@ -1,0 +1,7 @@
+{
+  "name": "@sentrello/module-crm",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@sentrello/module-sdk": "*" }
+}
