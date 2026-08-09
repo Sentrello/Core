@@ -1,0 +1,12 @@
+{
+  "name": "@sentrello/module-bookkeeping",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@sentrello/module-sdk": "*",
+    "@sentrello/auth": "*",
+    "@sentrello/db": "*",
+    "drizzle-orm": "^0.45.0"
+  }
+}

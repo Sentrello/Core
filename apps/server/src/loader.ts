@@ -1,8 +1,12 @@
-import type { EntitlementNeed, SentrelloModule } from "@sentrello/module-sdk";
+import type {
+  EntitlementNeed,
+  SentrelloEnv,
+  SentrelloModule,
+} from "@sentrello/module-sdk";
 import type { Hono } from "hono";
 
 export function loadModules(
-  app: Hono,
+  app: Hono<SentrelloEnv>,
   entitled: (need: EntitlementNeed) => boolean,
   modules: SentrelloModule[],
 ) {

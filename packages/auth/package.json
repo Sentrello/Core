@@ -1,0 +1,20 @@
+{
+  "name": "@sentrello/auth",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hono": "./src/hono.ts",
+    "./bootstrap": "./src/bootstrap.ts",
+    "./permissions": "./src/permissions.ts"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.0",
+    "@sentrello/db": "*",
+    "@sentrello/module-sdk": "*",
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.0"
+  }
+}

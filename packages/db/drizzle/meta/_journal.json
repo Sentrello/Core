@@ -8,6 +8,20 @@
       "when": 1786305068216,
       "tag": "0000_cool_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786305845360,
+      "tag": "0001_fancy_moonstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786306194921,
+      "tag": "0002_steady_silver_sable",
+      "breakpoints": true
     }
   ]
 }

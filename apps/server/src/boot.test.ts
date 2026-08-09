@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { defineModule } from "@sentrello/module-sdk";
+import { type SentrelloEnv, defineModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
@@ -22,7 +22,7 @@ function mod(id: string, tier: "free" | "pro" | "module", requires?: string[]) {
 }
 
 test("free modules load without any license", () => {
-  const app = new Hono();
+  const app = new Hono<SentrelloEnv>();
   const { loaded, nav, permissions } = loadModules(app, freeGate, [
     mod("crm", "free"),
   ]);
@@ -39,17 +39,25 @@ test("pro + entitled optional modules load only when the gate allows", () => {
     mod("inventory", "module"),
   ];
 
-  const proLoaded = loadModules(new Hono(), proGate, modules).loaded;
+  const proLoaded = loadModules(
+    new Hono<SentrelloEnv>(),
+    proGate,
+    modules,
+  ).loaded;
   expect(proLoaded).toContain("pro-core");
   expect(proLoaded).toContain("hr");
   expect(proLoaded).not.toContain("inventory");
 
-  const freeLoaded = loadModules(new Hono(), freeGate, modules).loaded;
+  const freeLoaded = loadModules(
+    new Hono<SentrelloEnv>(),
+    freeGate,
+    modules,
+  ).loaded;
   expect(freeLoaded).toEqual(["crm"]);
 });
 
 test("module with an unmet `requires` is skipped", () => {
-  const { loaded } = loadModules(new Hono(), freeGate, [
+  const { loaded } = loadModules(new Hono<SentrelloEnv>(), freeGate, [
     mod("reports", "free", ["pro-core"]),
     mod("crm", "free"),
   ]);
@@ -57,7 +65,7 @@ test("module with an unmet `requires` is skipped", () => {
 });
 
 test("dependency order is respected regardless of array order", () => {
-  const { loaded } = loadModules(new Hono(), freeGate, [
+  const { loaded } = loadModules(new Hono<SentrelloEnv>(), freeGate, [
     mod("c", "free", ["b"]),
     mod("b", "free", ["a"]),
     mod("a", "free"),
@@ -66,7 +74,7 @@ test("dependency order is respected regardless of array order", () => {
 });
 
 test("a skipped module registers no routes", async () => {
-  const app = new Hono();
+  const app = new Hono<SentrelloEnv>();
   loadModules(app, freeGate, [mod("hr", "module")]);
   const res = await app.request("http://localhost/api/hr");
   expect(res.status).toBe(404);
@@ -91,6 +99,32 @@ test("/healthz boots and reports Free when no token is present", async () => {
     status: "ok",
     tier: "free",
     license_valid: false,
-    modules_loaded: ["crm"],
+    modules_loaded: ["crm", "invoicing", "bookkeeping"],
   });
+});
+
+test("/api/_meta exposes only the nav the loaded modules registered", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+  const res = await server.fetch(new Request("http://localhost/api/_meta"));
+  const body = (await res.json()) as {
+    nav: { id: string }[];
+    loaded: string[];
+  };
+  expect(body.nav.map((n) => n.id)).toEqual([
+    "crm",
+    "invoicing",
+    "bookkeeping",
+  ]);
+  expect(body.loaded).not.toContain("pro-core");
+});
+
+test("a business route is 401 without a session", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+  const res = await server.fetch(new Request("http://localhost/api/contacts"));
+  expect(res.status).toBe(401);
+  expect(await res.json()).toEqual({ error: "unauthorized" });
 });

@@ -13,6 +13,11 @@ jobs:
           --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgres://sentrello:sentrello@localhost:5432/sentrello
+      BETTER_AUTH_SECRET: ci-secret-not-used-outside-ci-0123456789abcdef
+      SENTRELLO_BASE_URL: http://localhost:3000
+      SENTRELLO_LICENSE_PUBLIC_KEY_PATH: ./secrets/license_public.pem
+      SENTRELLO_LICENSE_TOKEN_PATH: ./secrets/license_token.jwt
+      SENTRELLO_INSTANCE_ID: ci-instance
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -23,3 +28,4 @@ jobs:
       - run: bun run typecheck
       - run: bun run db:migrate
       - run: bun test
+      - run: bun run build:web

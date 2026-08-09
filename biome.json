@@ -5,6 +5,13 @@
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
   "json": { "parser": { "allowComments": true } },
   "files": {
-    "ignore": ["dist", "node_modules", "packages/db/drizzle", "docs"]
+    "ignore": [
+      "**/dist/**",
+      "**/dist-types/**",
+      "**/node_modules/**",
+      "packages/db/drizzle/**",
+      "packages/db/src/auth-schema.ts",
+      "docs/**"
+    ]
   }
 }

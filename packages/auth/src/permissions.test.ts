@@ -1,0 +1,150 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { db, schema } from "@sentrello/db";
+import { eq } from "drizzle-orm";
+import { auth } from "./index";
+import { accounting, admin, customer, staff } from "./permissions";
+
+// --- the matrix itself, no database needed -------------------------------
+
+test("accounting may send invoices and read reports, but not manage users", () => {
+  expect(accounting.authorize({ invoicing: ["send"] }).success).toBe(true);
+  expect(accounting.authorize({ bookkeeping: ["create"] }).success).toBe(true);
+  expect(accounting.authorize({ reports: ["read"] }).success).toBe(true);
+  expect(accounting.authorize({ member: ["create"] }).success).toBe(false);
+  expect(accounting.authorize({ settings: ["update"] }).success).toBe(false);
+});
+
+test("staff may work CRM but touches no money", () => {
+  expect(staff.authorize({ crm: ["create"] }).success).toBe(true);
+  expect(staff.authorize({ invoicing: ["read"] }).success).toBe(true);
+  expect(staff.authorize({ invoicing: ["create"] }).success).toBe(false);
+  expect(staff.authorize({ invoicing: ["send"] }).success).toBe(false);
+  expect(staff.authorize({ bookkeeping: ["read"] }).success).toBe(false);
+});
+
+test("admin keeps the built-in org powers on top of the Sentrello resources", () => {
+  expect(admin.authorize({ invoicing: ["send"] }).success).toBe(true);
+  expect(admin.authorize({ member: ["create"] }).success).toBe(true);
+  expect(admin.authorize({ organization: ["update"] }).success).toBe(true);
+  expect(admin.authorize({ settings: ["update"] }).success).toBe(true);
+});
+
+test("customer may only read invoices — row scoping is the routes' job", () => {
+  expect(customer.authorize({ invoicing: ["read"] }).success).toBe(true);
+  expect(customer.authorize({ invoicing: ["create"] }).success).toBe(false);
+  expect(customer.authorize({ crm: ["read"] }).success).toBe(false);
+});
+
+// --- end to end through real sessions ------------------------------------
+
+const suffix = crypto.randomUUID().slice(0, 8);
+const password = "correct-horse-battery-staple";
+const emails = {
+  owner: `owner-${suffix}@example.test`,
+  accounting: `accounting-${suffix}@example.test`,
+  staff: `staff-${suffix}@example.test`,
+};
+
+let orgId: string;
+let ownerHeaders: Headers;
+let accountingHeaders: Headers;
+let staffHeaders: Headers;
+
+async function signUp(email: string, name: string) {
+  const { headers, response } = await auth.api.signUpEmail({
+    body: { email, password, name },
+    returnHeaders: true,
+  });
+  const cookie = headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-up returned no session cookie");
+  return { userId: response.user.id, headers: new Headers({ cookie }) };
+}
+
+beforeAll(async () => {
+  const owner = await signUp(emails.owner, "Owner");
+  ownerHeaders = owner.headers;
+
+  const org = await auth.api.createOrganization({
+    body: { name: `Perms ${suffix}`, slug: `perms-${suffix}` },
+    headers: ownerHeaders,
+  });
+  if (!org) throw new Error("could not create organization");
+  orgId = org.id;
+
+  await auth.api.setActiveOrganization({
+    body: { organizationId: orgId },
+    headers: ownerHeaders,
+  });
+
+  for (const [role, email] of [
+    ["accounting", emails.accounting],
+    ["staff", emails.staff],
+  ] as const) {
+    const member = await signUp(email, role);
+    await auth.api.addMember({
+      body: { userId: member.userId, organizationId: orgId, role },
+    });
+    await auth.api.setActiveOrganization({
+      body: { organizationId: orgId },
+      headers: member.headers,
+    });
+    if (role === "accounting") accountingHeaders = member.headers;
+    else staffHeaders = member.headers;
+  }
+});
+
+afterAll(async () => {
+  await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+  await db
+    .delete(schema.organizations)
+    .where(eq(schema.organizations.id, orgId));
+  for (const email of Object.values(emails)) {
+    const [u] = await db
+      .select({ id: schema.user.id })
+      .from(schema.user)
+      .where(eq(schema.user.email, email));
+    if (!u) continue;
+    await db.delete(schema.session).where(eq(schema.session.userId, u.id));
+    await db.delete(schema.account).where(eq(schema.account.userId, u.id));
+    await db.delete(schema.user).where(eq(schema.user.id, u.id));
+  }
+});
+
+test("the owner's session resolves to the organization it created", async () => {
+  const session = await auth.api.getSession({ headers: ownerHeaders });
+  expect(session?.session.activeOrganizationId).toBe(orgId);
+});
+
+test("accounting can send invoices through a real session", async () => {
+  const result = await auth.api.hasPermission({
+    headers: accountingHeaders,
+    body: { permissions: { invoicing: ["send"] } },
+  });
+  expect(result.success).toBe(true);
+});
+
+test("staff is denied invoice creation through a real session", async () => {
+  const result = await auth.api.hasPermission({
+    headers: staffHeaders,
+    body: { permissions: { invoicing: ["create"] } },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("staff can still work contacts", async () => {
+  const result = await auth.api.hasPermission({
+    headers: staffHeaders,
+    body: { permissions: { crm: ["create"] } },
+  });
+  expect(result.success).toBe(true);
+});
+
+test("a request with no session is not granted anything", async () => {
+  const check = auth.api.hasPermission({
+    headers: new Headers(),
+    body: { permissions: { crm: ["read"] } },
+  });
+  // Better Auth throws for an unauthenticated caller; the Hono guard turns any
+  // non-`success` outcome into a 403, so both shapes deny.
+  await expect(check).rejects.toBeDefined();
+});

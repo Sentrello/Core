@@ -11,7 +11,11 @@
     "@sentrello/module-sdk": "*",
     "@sentrello/licensing-client": "*",
     "@sentrello/db": "*",
-    "@sentrello/module-crm": "*"
+    "@sentrello/auth": "*",
+    "@sentrello/jobs": "*",
+    "@sentrello/module-crm": "*",
+    "@sentrello/module-invoicing": "*",
+    "@sentrello/module-bookkeeping": "*"
   },
   "devDependencies": {
     "jose": "^6.0.0"

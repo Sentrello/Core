@@ -1,0 +1,334 @@
+import {
+  activeOrganizationId,
+  requirePermission,
+  requireSession,
+} from "@sentrello/auth/hono";
+import { db, schema } from "@sentrello/db";
+import {
+  CORE_ACCOUNTS,
+  ensureAccount,
+  postJournalEntry,
+} from "@sentrello/db/ledger";
+import { invoiceStatus, lineTotals } from "@sentrello/db/money";
+import { nextDocumentNumber } from "@sentrello/db/numbering";
+import { defineModule } from "@sentrello/module-sdk";
+import { and, eq } from "drizzle-orm";
+
+type IncomingLine = {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  taxRateBp: number;
+};
+
+export default defineModule({
+  id: "invoicing",
+  tier: "free",
+  register(ctx) {
+    ctx.registerNav({ id: "invoicing", label: "Invoices", order: 20 });
+    for (const p of ["read", "create", "update", "delete", "send"]) {
+      ctx.registerPermission(`invoicing:${p}`);
+    }
+
+    ctx.app.get(
+      "/api/invoices",
+      requireSession(),
+      requirePermission({ invoicing: ["read"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const rows = await db
+          .select()
+          .from(schema.invoices)
+          .where(eq(schema.invoices.organizationId, orgId));
+        return c.json({ invoices: rows });
+      },
+    );
+
+    ctx.app.post(
+      "/api/invoices",
+      requireSession(),
+      requirePermission({ invoicing: ["create"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const { contactId, currency, dueDate, lines } = await c.req.json();
+        const incoming: IncomingLine[] = lines ?? [];
+        const t = lineTotals(incoming);
+
+        const invoice = await db.transaction(async (tx) => {
+          const [inv] = await tx
+            .insert(schema.invoices)
+            .values({
+              organizationId: orgId,
+              contactId,
+              currency,
+              dueDate: dueDate ? new Date(dueDate) : null,
+              number: await nextDocumentNumber(tx, orgId, "invoice"),
+              status: "open",
+              subtotalCents: t.subtotal,
+              taxCents: t.tax,
+              totalCents: t.total,
+            })
+            .returning();
+          if (!inv) throw new Error("invoice insert returned no row");
+          if (incoming.length > 0) {
+            await tx.insert(schema.invoiceLines).values(
+              incoming.map((l) => ({
+                invoiceId: inv.id,
+                description: l.description,
+                quantity: l.quantity,
+                unitPriceCents: l.unitPrice,
+                taxRateBp: l.taxRateBp,
+              })),
+            );
+          }
+          return inv;
+        });
+
+        // Issuing an invoice is an accounting event: Dr AR / Cr Income + Tax.
+        const [ar, income, taxPayable] = await Promise.all([
+          ensureAccount(orgId, CORE_ACCOUNTS.accountsReceivable),
+          ensureAccount(orgId, CORE_ACCOUNTS.salesIncome),
+          ensureAccount(orgId, CORE_ACCOUNTS.taxPayable),
+        ]);
+        await postJournalEntry(
+          orgId,
+          `Invoice ${invoice.number}`,
+          `invoice:${invoice.id}`,
+          [
+            { accountId: ar, debitCents: t.total },
+            { accountId: income, creditCents: t.subtotal },
+            ...(t.tax > 0
+              ? [{ accountId: taxPayable, creditCents: t.tax }]
+              : []),
+          ],
+        );
+
+        return c.json({ invoice }, 201);
+      },
+    );
+
+    // Record a payment (full or partial): posts Dr Cash / Cr AR and recomputes
+    // the invoice status from the ledger-backed payment total.
+    ctx.app.post(
+      "/api/invoices/:id/payments",
+      requireSession(),
+      requirePermission({ invoicing: ["update"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const invoiceId = c.req.param("id");
+        const { amountCents, method, gatewayRef } = await c.req.json();
+        if (!Number.isInteger(amountCents) || amountCents <= 0) {
+          return c.json(
+            { error: "amountCents must be a positive integer" },
+            400,
+          );
+        }
+
+        const [invoice] = await db
+          .select()
+          .from(schema.invoices)
+          .where(
+            and(
+              eq(schema.invoices.id, invoiceId),
+              eq(schema.invoices.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!invoice) return c.json({ error: "not found" }, 404);
+
+        const [payment] = await db
+          .insert(schema.payments)
+          .values({
+            organizationId: orgId,
+            invoiceId,
+            amountCents,
+            method: method ?? "manual",
+            gatewayRef,
+          })
+          .returning();
+        if (!payment) throw new Error("payment insert returned no row");
+
+        const paid = await db
+          .select({ amountCents: schema.payments.amountCents })
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.invoiceId, invoiceId),
+              eq(schema.payments.organizationId, orgId),
+            ),
+          );
+        const paidCents = paid.reduce((s, p) => s + p.amountCents, 0);
+        const { status, balanceDue } = invoiceStatus(
+          invoice.totalCents,
+          paidCents,
+        );
+
+        await db
+          .update(schema.invoices)
+          .set({ status })
+          .where(eq(schema.invoices.id, invoiceId));
+
+        const [cash, ar] = await Promise.all([
+          ensureAccount(orgId, CORE_ACCOUNTS.cash),
+          ensureAccount(orgId, CORE_ACCOUNTS.accountsReceivable),
+        ]);
+        await postJournalEntry(
+          orgId,
+          `Payment for ${invoice.number}`,
+          `payment:${payment.id}`,
+          [
+            { accountId: cash, debitCents: amountCents },
+            { accountId: ar, creditCents: amountCents },
+          ],
+        );
+
+        return c.json({ payment, status, balanceDue }, 201);
+      },
+    );
+
+    ctx.app.post(
+      "/api/quotes",
+      requireSession(),
+      requirePermission({ invoicing: ["create"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const { contactId, currency, lines } = await c.req.json();
+        const incoming: IncomingLine[] = lines ?? [];
+        const t = lineTotals(incoming);
+
+        const quote = await db.transaction(async (tx) => {
+          const [q] = await tx
+            .insert(schema.quotes)
+            .values({
+              organizationId: orgId,
+              contactId,
+              currency,
+              number: await nextDocumentNumber(tx, orgId, "quote"),
+              subtotalCents: t.subtotal,
+              taxCents: t.tax,
+              totalCents: t.total,
+            })
+            .returning();
+          if (!q) throw new Error("quote insert returned no row");
+          if (incoming.length > 0) {
+            await tx.insert(schema.quoteLines).values(
+              incoming.map((l) => ({
+                quoteId: q.id,
+                description: l.description,
+                quantity: l.quantity,
+                unitPriceCents: l.unitPrice,
+                taxRateBp: l.taxRateBp,
+              })),
+            );
+          }
+          return q;
+        });
+
+        return c.json({ quote }, 201);
+      },
+    );
+
+    // Convert a quote to an invoice: copies the lines and links quoteId.
+    ctx.app.post(
+      "/api/quotes/:id/convert",
+      requireSession(),
+      requirePermission({ invoicing: ["create"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const quoteId = c.req.param("id");
+
+        const [quote] = await db
+          .select()
+          .from(schema.quotes)
+          .where(
+            and(
+              eq(schema.quotes.id, quoteId),
+              eq(schema.quotes.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!quote) return c.json({ error: "not found" }, 404);
+
+        const lines = await db
+          .select()
+          .from(schema.quoteLines)
+          .where(eq(schema.quoteLines.quoteId, quoteId));
+
+        const invoice = await db.transaction(async (tx) => {
+          const [inv] = await tx
+            .insert(schema.invoices)
+            .values({
+              organizationId: orgId,
+              contactId: quote.contactId,
+              quoteId: quote.id,
+              currency: quote.currency,
+              number: await nextDocumentNumber(tx, orgId, "invoice"),
+              status: "open",
+              subtotalCents: quote.subtotalCents,
+              taxCents: quote.taxCents,
+              totalCents: quote.totalCents,
+            })
+            .returning();
+          if (!inv) throw new Error("invoice insert returned no row");
+          if (lines.length > 0) {
+            await tx.insert(schema.invoiceLines).values(
+              lines.map((l) => ({
+                invoiceId: inv.id,
+                description: l.description,
+                quantity: l.quantity,
+                unitPriceCents: l.unitPriceCents,
+                taxRateBp: l.taxRateBp,
+              })),
+            );
+          }
+          await tx
+            .update(schema.quotes)
+            .set({ status: "accepted" })
+            .where(eq(schema.quotes.id, quoteId));
+          return inv;
+        });
+
+        return c.json({ invoice }, 201);
+      },
+    );
+
+    /**
+     * Customer portal. The `customer` role only grants invoicing:read, which is
+     * NOT enough on its own — RBAC cannot express "only your own rows". The
+     * portal user is resolved to their contact record and the query is filtered
+     * to that contact, so a customer can never read another customer's invoice.
+     */
+    ctx.app.get(
+      "/api/portal/invoices",
+      requireSession(),
+      requirePermission({ invoicing: ["read"] }),
+      async (c) => {
+        const session = c.get("session");
+        const orgId = activeOrganizationId(session);
+
+        const [contact] = await db
+          .select({ id: schema.contacts.id })
+          .from(schema.contacts)
+          .where(
+            and(
+              eq(schema.contacts.organizationId, orgId),
+              eq(schema.contacts.portalUserId, session.user.id),
+            ),
+          )
+          .limit(1);
+        if (!contact) return c.json({ invoices: [] });
+
+        const rows = await db
+          .select()
+          .from(schema.invoices)
+          .where(
+            and(
+              eq(schema.invoices.organizationId, orgId),
+              eq(schema.invoices.contactId, contact.id),
+            ),
+          );
+        return c.json({ invoices: rows });
+      },
+    );
+  },
+});

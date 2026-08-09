@@ -2,6 +2,14 @@
   "name": "@sentrello/module-crm",
   "version": "0.0.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@sentrello/module-sdk": "*" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sentrello/module-sdk": "*",
+    "@sentrello/auth": "*",
+    "@sentrello/db": "*",
+    "drizzle-orm": "^0.45.0",
+    "hono": "^4.6.0"
+  }
 }

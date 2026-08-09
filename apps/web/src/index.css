@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (Build Plan §8.4): one confident brand hue, warm neutrals,
+ * semantic status colors. Light and dark from day one — every component reads
+ * these variables, so the whole app themes from one place.
+ */
+@theme {
+  --color-brand-50: oklch(0.97 0.02 190);
+  --color-brand-100: oklch(0.93 0.04 190);
+  --color-brand-300: oklch(0.78 0.09 190);
+  --color-brand-500: oklch(0.58 0.11 190);
+  --color-brand-600: oklch(0.5 0.1 190);
+  --color-brand-700: oklch(0.42 0.09 190);
+
+  --color-neutral-50: oklch(0.98 0.004 80);
+  --color-neutral-100: oklch(0.96 0.005 80);
+  --color-neutral-200: oklch(0.92 0.006 80);
+  --color-neutral-500: oklch(0.62 0.008 80);
+  --color-neutral-700: oklch(0.42 0.008 80);
+  --color-neutral-900: oklch(0.24 0.008 80);
+
+  --color-success: oklch(0.62 0.14 150);
+  --color-warning: oklch(0.75 0.14 75);
+  --color-danger: oklch(0.6 0.18 25);
+  --color-info: oklch(0.62 0.12 250);
+}
+
+:root {
+  --surface: var(--color-neutral-50);
+  --surface-raised: white;
+  --border: var(--color-neutral-200);
+  --text: var(--color-neutral-900);
+  --text-muted: var(--color-neutral-500);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: oklch(0.19 0.008 80);
+    --surface-raised: oklch(0.24 0.008 80);
+    --border: oklch(0.32 0.008 80);
+    --text: var(--color-neutral-100);
+    --text-muted: oklch(0.68 0.008 80);
+  }
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+/* Non-negotiable for an accounting product: money lines up in columns. */
+.money,
+td.money,
+th.money {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

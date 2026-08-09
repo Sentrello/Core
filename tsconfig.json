@@ -1,11 +1,41 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/module-sdk" },
-    { "path": "./packages/licensing-client" },
-    { "path": "./packages/db" },
-    { "path": "./packages/modules-free/crm" },
-    { "path": "./apps/server" },
-    { "path": "./scripts" }
+    {
+      "path": "./packages/module-sdk"
+    },
+    {
+      "path": "./packages/licensing-client"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/modules-free/crm"
+    },
+    {
+      "path": "./packages/modules-free/invoicing"
+    },
+    {
+      "path": "./packages/modules-free/bookkeeping"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/email"
+    },
+    {
+      "path": "./packages/jobs"
+    },
+    {
+      "path": "./apps/server"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./scripts"
+    }
   ]
 }

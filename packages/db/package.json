@@ -2,7 +2,12 @@
   "name": "@sentrello/db",
   "version": "0.0.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./money": "./src/money.ts",
+    "./ledger": "./src/ledger.ts",
+    "./numbering": "./src/numbering.ts"
+  },
   "scripts": { "migrate": "bun run src/migrate.ts" },
   "dependencies": { "drizzle-orm": "^0.45.0", "postgres": "^3.4.0" },
   "devDependencies": { "drizzle-kit": "^0.30.0" }
