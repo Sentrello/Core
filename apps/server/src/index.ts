@@ -7,15 +7,21 @@ import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
+import { discoverOptionalModules } from "./optional-modules";
 
 const app = new Hono<SentrelloEnv>();
 mountAuth(app);
 
 const { state, gate } = await resolveLicense();
 
-// Pro/optional modules are added here when their bundles are present (Packet 03
-// distribution); the loader ignores any this instance is not entitled to.
-const modules: SentrelloModule[] = [crm, invoicing, bookkeeping];
+// Free modules ship in this repo; commercial bundles are discovered at runtime
+// only if installed. The loader then drops any this instance is not entitled to.
+const modules: SentrelloModule[] = [
+  crm,
+  invoicing,
+  bookkeeping,
+  ...(await discoverOptionalModules()),
+];
 const { nav, loaded } = loadModules(app, gate, modules);
 
 app.get("/healthz", (c) =>

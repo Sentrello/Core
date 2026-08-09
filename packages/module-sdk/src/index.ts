@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import { Hono } from "hono";
 
 export type Tier = "free" | "pro" | "module";
 
@@ -45,4 +45,29 @@ export interface SentrelloModule {
 
 export function defineModule(m: SentrelloModule): SentrelloModule {
   return m;
+}
+
+/**
+ * A host-shaped Hono app. Modules use this instead of depending on `hono`
+ * themselves — a second copy of the framework gives structurally identical but
+ * nominally incompatible generics, exactly like a second copy of the ORM.
+ * Mainly useful for testing a module in isolation.
+ */
+export function createModuleApp(): Hono<SentrelloEnv> {
+  return new Hono<SentrelloEnv>();
+}
+
+/** Registers a module against a bare app, with entitlement forced on. */
+export function registerForTest(
+  module: SentrelloModule,
+  app: Hono<SentrelloEnv> = createModuleApp(),
+): Hono<SentrelloEnv> {
+  module.register({
+    app,
+    entitled: () => true,
+    registerNav: () => {},
+    registerPermission: () => {},
+    registerJob: () => {},
+  });
+  return app;
 }
