@@ -1,4 +1,5 @@
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
+import { createMiddleware } from "hono/factory";
 
 export type Tier = "free" | "pro" | "module";
 
@@ -15,11 +16,21 @@ export interface EntitlementNeed {
  */
 export interface SentrelloSession {
   session: { activeOrganizationId?: string | null; userId: string };
-  user: { id: string };
+  user: { id: string; email?: string | null; name?: string | null };
 }
 
 /** The Hono environment the host app and every module route share. */
 export type SentrelloEnv = { Variables: { session: SentrelloSession } };
+
+/** The host's app type. Modules take this rather than importing `hono`. */
+export type SentrelloApp = Hono<SentrelloEnv>;
+
+/** Middleware bound to the host's environment, so modules need no `hono` dep. */
+export function defineMiddleware(
+  handler: MiddlewareHandler<SentrelloEnv>,
+): MiddlewareHandler<SentrelloEnv> {
+  return createMiddleware<SentrelloEnv>(handler);
+}
 
 export interface ModuleContext {
   app: Hono<SentrelloEnv>;
