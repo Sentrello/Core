@@ -3,6 +3,7 @@ import { mountAuth } from "@sentrello/auth/hono";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
 import crm from "@sentrello/module-crm";
+import forms from "@sentrello/module-forms";
 import invoicing from "@sentrello/module-invoicing";
 import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
@@ -21,6 +22,7 @@ const { state, gate } = await resolveLicense();
 // only if installed. The loader then drops any this instance is not entitled to.
 const modules: SentrelloModule[] = [
   crm,
+  forms,
   invoicing,
   bookkeeping,
   ...(await discoverOptionalModules()),

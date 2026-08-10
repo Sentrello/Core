@@ -335,3 +335,58 @@ export const bankTransactions = pgTable(
   },
   (t) => [index("bank_transactions_org_idx").on(t.organizationId)],
 );
+
+// ---------------------------------------------------------------------------
+// Embeddable forms
+//
+// A form is pasted into any external site — the customer's marketing pages, a
+// landing page, anywhere — and posts straight to the customer's own instance.
+// Submissions never travel through Foothills infrastructure.
+// ---------------------------------------------------------------------------
+
+export const forms = pgTable(
+  "forms",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    // public identifier, safe to paste into a page's HTML
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("contact"), // contact|quote
+    // domains permitted to post; empty means same-origin only
+    allowedOrigins: jsonb("allowed_origins")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    fields: jsonb("fields")
+      .$type<
+        { name: string; label: string; type: string; required?: boolean }[]
+      >()
+      .notNull()
+      .default([]),
+    redirectUrl: text("redirect_url"),
+    notifyEmail: text("notify_email"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [index("forms_org_idx").on(t.organizationId)],
+);
+
+export const formSubmissions = pgTable(
+  "form_submissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    formId: uuid("form_id").notNull(),
+    contactId: uuid("contact_id"),
+    quoteId: uuid("quote_id"),
+    payload: jsonb("payload").$type<Record<string, string>>().notNull(),
+    origin: text("origin"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("form_submissions_org_idx").on(t.organizationId),
+    index("form_submissions_form_idx").on(t.formId),
+  ],
+);

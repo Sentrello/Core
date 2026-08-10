@@ -15,7 +15,8 @@
     "@sentrello/jobs": "*",
     "@sentrello/module-crm": "*",
     "@sentrello/module-invoicing": "*",
-    "@sentrello/module-bookkeeping": "*"
+    "@sentrello/module-bookkeeping": "*",
+    "@sentrello/module-forms": "*"
   },
   "devDependencies": {
     "jose": "^6.0.0"

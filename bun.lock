@@ -21,6 +21,7 @@
         "@sentrello/licensing-client": "*",
         "@sentrello/module-bookkeeping": "*",
         "@sentrello/module-crm": "*",
+        "@sentrello/module-forms": "*",
         "@sentrello/module-invoicing": "*",
         "@sentrello/module-sdk": "*",
         "hono": "^4.6.0",
@@ -125,6 +126,16 @@
         "@sentrello/db": "*",
         "@sentrello/module-sdk": "*",
         "drizzle-orm": "^0.45.0",
+        "hono": "^4.6.0",
+      },
+    },
+    "packages/modules-free/forms": {
+      "name": "@sentrello/module-forms",
+      "version": "0.0.0",
+      "dependencies": {
+        "@sentrello/auth": "*",
+        "@sentrello/db": "*",
+        "@sentrello/module-sdk": "*",
         "hono": "^4.6.0",
       },
     },
@@ -358,6 +369,8 @@
     "@sentrello/module-bookkeeping": ["@sentrello/module-bookkeeping@workspace:packages/modules-free/bookkeeping"],
 
     "@sentrello/module-crm": ["@sentrello/module-crm@workspace:packages/modules-free/crm"],
+
+    "@sentrello/module-forms": ["@sentrello/module-forms@workspace:packages/modules-free/forms"],
 
     "@sentrello/module-invoicing": ["@sentrello/module-invoicing@workspace:packages/modules-free/invoicing"],
 

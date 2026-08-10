@@ -99,7 +99,7 @@ test("/healthz boots and reports Free when no token is present", async () => {
     status: "ok",
     tier: "free",
     license_valid: false,
-    modules_loaded: ["crm", "invoicing", "bookkeeping"],
+    modules_loaded: ["crm", "forms", "invoicing", "bookkeeping"],
   });
 });
 
@@ -112,9 +112,11 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
     nav: { id: string }[];
     loaded: string[];
   };
+  // sorted by the order each module registered, not by load order
   expect(body.nav.map((n) => n.id)).toEqual([
     "crm",
     "invoicing",
+    "forms",
     "bookkeeping",
   ]);
   expect(body.loaded).not.toContain("pro-core");
