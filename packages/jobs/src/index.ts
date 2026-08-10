@@ -4,6 +4,17 @@ import { refreshLicenseToken } from "./license-refresh";
 import { sendOverdueReminders } from "./overdue";
 import { runRecurringInvoices } from "./recurring";
 
+/** Drops `sslmode` from a connection string, leaving everything else intact. */
+export function withoutSslMode(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("sslmode");
+    return parsed.toString();
+  } catch {
+    return url; // not a URL we can parse; hand it back untouched
+  }
+}
+
 export const QUEUES = {
   recurringInvoices: "recurring-invoices",
   overdueReminders: "overdue-reminders",
@@ -24,8 +35,15 @@ export async function startJobs() {
   // pg-boss uses node-postgres, which verifies TLS strictly. A managed
   // provider's private CA has to be supplied explicitly or the connection is
   // refused with SELF_SIGNED_CERT_IN_CHAIN.
+  //
+  // `sslmode` in the connection string is parsed by pg-connection-string and
+  // wins over an explicit `ssl` option, so it has to come out of the URL for
+  // the CA to take effect.
   const ssl = dbSsl();
-  const boss = new PgBoss({ connectionString: url, ...(ssl ? { ssl } : {}) });
+  const boss = new PgBoss({
+    connectionString: ssl ? withoutSslMode(url) : url,
+    ...(ssl ? { ssl } : {}),
+  });
   await boss.start();
 
   const handlers = {

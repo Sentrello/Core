@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import type PgBoss from "pg-boss";
-import { QUEUES, SCHEDULES, startJobs } from "./index";
+import { QUEUES, SCHEDULES, startJobs, withoutSslMode } from "./index";
 import { refreshLicenseToken } from "./license-refresh";
 
 let boss: PgBoss | undefined;
@@ -89,4 +89,18 @@ test("license-refresh writes a fresh token when the server issues one", async ()
       .delete()
       .catch(() => {});
   }
+});
+
+test("sslmode is stripped so an explicit CA is not overridden by the URL", () => {
+  expect(
+    withoutSslMode(
+      "postgresql://u:p@host.example:25060/db?sslmode=require&application_name=x",
+    ),
+  ).toBe("postgresql://u:p@host.example:25060/db?application_name=x");
+
+  // nothing else is disturbed
+  expect(withoutSslMode("postgresql://u:p@host/db")).toBe(
+    "postgresql://u:p@host/db",
+  );
+  expect(withoutSslMode("not a url")).toBe("not a url");
 });

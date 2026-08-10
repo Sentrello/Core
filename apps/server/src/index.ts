@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
 import { discoverOptionalModules } from "./optional-modules";
+import { serveWeb } from "./static";
 
 const app = new Hono<SentrelloEnv>();
 mountAuth(app);
@@ -34,6 +35,9 @@ app.get("/healthz", (c) =>
 );
 
 app.get("/api/_meta", (c) => c.json({ nav, loaded }));
+
+// last: everything unclaimed is the SPA
+serveWeb(app);
 
 // Jobs run only in the real server process, never when a test imports this file.
 if (import.meta.main) {
