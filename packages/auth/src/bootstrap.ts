@@ -51,13 +51,33 @@ export async function ensureBootstrapped(owner?: OwnerDetails) {
   if (!(await needsBootstrap())) return { bootstrapped: false as const };
   if (!owner) return { bootstrapped: false as const }; // waiting for the operator
 
-  // The sign-up guard refuses public sign-ups; this is the one sanctioned path.
-  const signUp = await duringBootstrap(() =>
-    auth.api.signUpEmail({
-      body: { email: owner.email, password: owner.password, name: owner.name },
-      returnHeaders: true,
-    }),
-  );
+  // Setup is two steps: create the account, then create the organization. If
+  // the second fails, the account exists but the instance is still unclaimed —
+  // and a naive retry dies on "email already taken", leaving the instance
+  // permanently unclaimable without database surgery. So a retry with the same
+  // credentials signs in instead of signing up.
+  //
+  // This is safe precisely because the instance is unclaimed: there is no
+  // organization to join, and the setup token was already checked.
+  const signUp = await duringBootstrap(async () => {
+    try {
+      return await auth.api.signUpEmail({
+        body: {
+          email: owner.email,
+          password: owner.password,
+          name: owner.name,
+        },
+        returnHeaders: true,
+      });
+    } catch (err) {
+      const existing = await auth.api.signInEmail({
+        body: { email: owner.email, password: owner.password },
+        returnHeaders: true,
+      });
+      if (!existing) throw err;
+      return existing;
+    }
+  });
 
   // The organization created here IS the instance's tenant boundary, and the
   // creator gets `creatorRole: "admin"` — the Instance Owner.
