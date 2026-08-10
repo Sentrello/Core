@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 import { ac, roles } from "./permissions";
+import { signUpGuard } from "./signup-policy";
 
 // BYO Google OAuth: only enabled if the instance owner configured it.
 const google =
@@ -21,6 +22,8 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   emailAndPassword: { enabled: true, requireEmailVerification: false }, // flip on once email is wired
   ...(google ? { socialProviders: google } : {}),
+  // Closed by default: first-run owner, invitation, or an explicit opt-in.
+  hooks: { before: signUpGuard },
   plugins: [
     organization({
       ac,

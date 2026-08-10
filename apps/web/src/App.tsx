@@ -3,6 +3,7 @@ import { useState } from "react";
 import { type Meta, api } from "./lib/api";
 import { authClient, useSession } from "./lib/auth";
 import { Contacts } from "./routes/contacts";
+import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
 
 function useMeta() {
@@ -16,13 +17,27 @@ function useMeta() {
  * The nav renders only what the server loaded, which is only what the license
  * entitles — the UI can never show a feature the instance isn't licensed for.
  */
+function useBootstrap() {
+  return useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: () =>
+      api<{ needed: boolean; signUpOpen: boolean }>("/api/bootstrap"),
+    staleTime: 0,
+  });
+}
+
 export default function App() {
   const { data } = useMeta();
   const session = useSession();
+  const bootstrap = useBootstrap();
   const nav = data?.nav ?? [];
   const [active, setActive] = useState("crm");
 
-  if (session.isPending) return null;
+  if (session.isPending || bootstrap.isLoading) return null;
+  // A fresh instance has no owner yet: claim it before anything else.
+  if (bootstrap.data?.needed) {
+    return <Setup onDone={() => window.location.reload()} />;
+  }
   if (!session.data) return <SignIn />;
 
   return (

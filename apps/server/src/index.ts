@@ -1,3 +1,4 @@
+import { registerBootstrapRoutes } from "@sentrello/auth/bootstrap";
 import { mountAuth } from "@sentrello/auth/hono";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
@@ -12,6 +13,7 @@ import { serveWeb } from "./static";
 
 const app = new Hono<SentrelloEnv>();
 mountAuth(app);
+registerBootstrapRoutes(app);
 
 const { state, gate } = await resolveLicense();
 
