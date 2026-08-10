@@ -1,10 +1,16 @@
 import type { EntitlementNeed } from "@sentrello/module-sdk";
 import { type JWTPayload, importSPKI, jwtVerify } from "jose";
-import { SENTRELLO_LICENSE_PUBLIC_KEY } from "./public-key";
+import {
+  SENTRELLO_LICENSE_PUBLIC_KEY,
+  SENTRELLO_LICENSE_PUBLIC_KEYS,
+} from "./public-key";
 
 const ALG = "EdDSA"; // Ed25519
 
-export { SENTRELLO_LICENSE_PUBLIC_KEY } from "./public-key";
+export {
+  SENTRELLO_LICENSE_PUBLIC_KEY,
+  SENTRELLO_LICENSE_PUBLIC_KEYS,
+} from "./public-key";
 
 export interface LicenseClaims extends JWTPayload {
   license_id: string;
@@ -27,18 +33,27 @@ export interface LicenseState {
  */
 export async function verifyLicenseToken(
   token: string,
-  publicKeyPem: string = SENTRELLO_LICENSE_PUBLIC_KEY,
+  publicKeyPem: string | string[] = SENTRELLO_LICENSE_PUBLIC_KEYS,
 ): Promise<LicenseState> {
-  try {
-    const pub = await importSPKI(publicKeyPem, ALG);
-    const { payload } = await jwtVerify(token, pub, {
-      issuer: "sentrello.com",
-    });
-    return { claims: payload as LicenseClaims, valid: true };
-  } catch (err) {
-    // expired / tampered / wrong key => fall back to Free, never crash the app
-    return { claims: null, valid: false, reason: (err as Error).message };
+  const keys = Array.isArray(publicKeyPem) ? publicKeyPem : [publicKeyPem];
+  let reason = "no trusted key accepted the token";
+
+  for (const pem of keys) {
+    try {
+      const pub = await importSPKI(pem, ALG);
+      const { payload } = await jwtVerify(token, pub, {
+        issuer: "sentrello.com",
+      });
+      return { claims: payload as LicenseClaims, valid: true };
+    } catch (err) {
+      // try the next trusted key: during a rotation both are valid for a while
+      reason = (err as Error).message;
+    }
   }
+
+  // expired / tampered / signed by a key we do not trust => fall back to Free,
+  // never crash the app
+  return { claims: null, valid: false, reason };
 }
 
 /** The gate every module and route uses. Free is the safe default. */

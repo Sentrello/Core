@@ -77,3 +77,50 @@ test("verification defaults to the embedded key, so a stock instance needs no co
   expect(state.valid).toBe(false);
   expect(makeEntitlementGate(state)({ tier: "pro" })).toBe(false);
 });
+
+test("a token signed by any trusted key verifies, which is what makes rotation possible", async () => {
+  const { generateKeyPair, exportPKCS8, exportSPKI } = await import("jose");
+  const rotated = await generateKeyPair(ALG, { extractable: true });
+  const newPub = await exportSPKI(rotated.publicKey);
+  const newPriv = await exportPKCS8(rotated.privateKey);
+
+  const signedWithNew = await new SignJWT({ tier: "pro", modules: [] })
+    .setProtectedHeader({ alg: ALG })
+    .setIssuer("sentrello.com")
+    .setIssuedAt()
+    .setExpirationTime("72h")
+    .sign(await importPKCS8(newPriv, ALG));
+
+  // during rotation an instance trusts both keys
+  const during = await verifyLicenseToken(signedWithNew, [pub, newPub]);
+  expect(during.valid).toBe(true);
+
+  // a token from the old key still works while the old key is trusted
+  const signedWithOld = await mint({ tier: "pro", modules: [] });
+  expect((await verifyLicenseToken(signedWithOld, [pub, newPub])).valid).toBe(
+    true,
+  );
+
+  // once the old key is dropped, its tokens stop verifying
+  expect((await verifyLicenseToken(signedWithOld, [newPub])).valid).toBe(false);
+});
+
+test("an untrusted key is rejected however many keys are trusted", async () => {
+  const { generateKeyPair, exportPKCS8, exportSPKI } = await import("jose");
+  const stranger = await generateKeyPair(ALG, { extractable: true });
+  const forged = await new SignJWT({ tier: "pro", modules: [] })
+    .setProtectedHeader({ alg: ALG })
+    .setIssuer("sentrello.com")
+    .setIssuedAt()
+    .setExpirationTime("72h")
+    .sign(await importPKCS8(await exportPKCS8(stranger.privateKey), ALG));
+
+  const state = await verifyLicenseToken(forged, [
+    pub,
+    await exportSPKI(
+      (await generateKeyPair(ALG, { extractable: true })).publicKey,
+    ),
+  ]);
+  expect(state.valid).toBe(false);
+  expect(makeEntitlementGate(state)({ tier: "pro" })).toBe(false);
+});
