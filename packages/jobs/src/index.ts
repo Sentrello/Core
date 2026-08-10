@@ -1,3 +1,4 @@
+import { dbSsl } from "@sentrello/db/ssl";
 import PgBoss from "pg-boss";
 import { refreshLicenseToken } from "./license-refresh";
 import { sendOverdueReminders } from "./overdue";
@@ -20,7 +21,11 @@ export async function startJobs() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
 
-  const boss = new PgBoss(url);
+  // pg-boss uses node-postgres, which verifies TLS strictly. A managed
+  // provider's private CA has to be supplied explicitly or the connection is
+  // refused with SELF_SIGNED_CERT_IN_CHAIN.
+  const ssl = dbSsl();
+  const boss = new PgBoss({ connectionString: url, ...(ssl ? { ssl } : {}) });
   await boss.start();
 
   const handlers = {

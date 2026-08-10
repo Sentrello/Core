@@ -7,7 +7,8 @@
     "./money": "./src/money.ts",
     "./ledger": "./src/ledger.ts",
     "./numbering": "./src/numbering.ts",
-    "./orm": "./src/orm.ts"
+    "./orm": "./src/orm.ts",
+    "./ssl": "./src/ssl.ts"
   },
   "scripts": {
     "migrate": "bun run src/migrate.ts"
