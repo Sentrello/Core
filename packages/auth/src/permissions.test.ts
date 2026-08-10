@@ -3,6 +3,7 @@ import { db, schema } from "@sentrello/db";
 import { eq } from "drizzle-orm";
 import { auth } from "./index";
 import { accounting, admin, customer, staff } from "./permissions";
+import { signUpAsOwner } from "./testing";
 
 // --- the matrix itself, no database needed -------------------------------
 
@@ -51,10 +52,7 @@ let accountingHeaders: Headers;
 let staffHeaders: Headers;
 
 async function signUp(email: string, name: string) {
-  const { headers, response } = await auth.api.signUpEmail({
-    body: { email, password, name },
-    returnHeaders: true,
-  });
+  const { headers, response } = await signUpAsOwner({ email, password, name });
   const cookie = headers.get("set-cookie");
   if (!cookie) throw new Error("sign-up returned no session cookie");
   return { userId: response.user.id, headers: new Headers({ cookie }) };

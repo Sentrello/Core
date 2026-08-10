@@ -6,11 +6,18 @@ import { api } from "../lib/api";
  * the endpoint behind it refuses once one does — this must never become a
  * second way in.
  */
-export function Setup({ onDone }: { onDone: () => void }) {
+export function Setup({
+  onDone,
+  tokenRequired,
+}: {
+  onDone: () => void;
+  tokenRequired: boolean;
+}) {
   const [name, setName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,11 +32,21 @@ export function Setup({ onDone }: { onDone: () => void }) {
     try {
       await api("/api/bootstrap", {
         method: "POST",
-        body: JSON.stringify({ name, email, password, organizationName }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          organizationName,
+          setupToken,
+        }),
       });
       onDone();
     } catch {
-      setError("Could not complete setup. It may already have been done.");
+      setError(
+        tokenRequired
+          ? "Setup failed. Check the setup token from the server's .env file."
+          : "Could not complete setup. It may already have been done.",
+      );
     } finally {
       setBusy(false);
     }
@@ -81,6 +98,15 @@ export function Setup({ onDone }: { onDone: () => void }) {
           autoComplete="new-password"
           hint="At least 12 characters."
         />
+
+        {tokenRequired ? (
+          <Field
+            label="Setup token"
+            value={setupToken}
+            onChange={setSetupToken}
+            hint="SENTRELLO_SETUP_TOKEN from this server's .env file."
+          />
+        ) : null}
 
         {error ? (
           <p className="text-sm" style={{ color: "var(--color-danger)" }}>

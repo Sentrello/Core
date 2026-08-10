@@ -21,7 +21,11 @@ function useBootstrap() {
   return useQuery({
     queryKey: ["bootstrap"],
     queryFn: () =>
-      api<{ needed: boolean; signUpOpen: boolean }>("/api/bootstrap"),
+      api<{
+        needed: boolean;
+        signUpOpen: boolean;
+        setupTokenRequired: boolean;
+      }>("/api/bootstrap"),
     staleTime: 0,
   });
 }
@@ -36,7 +40,12 @@ export default function App() {
   if (session.isPending || bootstrap.isLoading) return null;
   // A fresh instance has no owner yet: claim it before anything else.
   if (bootstrap.data?.needed) {
-    return <Setup onDone={() => window.location.reload()} />;
+    return (
+      <Setup
+        tokenRequired={bootstrap.data.setupTokenRequired}
+        onDone={() => window.location.reload()}
+      />
+    );
   }
   if (!session.data) return <SignIn />;
 

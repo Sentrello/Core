@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { auth } from "@sentrello/auth";
+import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
 import type { SentrelloEnv } from "@sentrello/module-sdk";
 import { eq, inArray } from "drizzle-orm";
@@ -23,9 +24,10 @@ beforeAll(async () => {
     registerJob: () => {},
   });
 
-  const signUp = await auth.api.signUpEmail({
-    body: { email, password: "correct-horse-battery-staple", name: "Owner" },
-    returnHeaders: true,
+  const signUp = await signUpAsOwner({
+    email,
+    password: "correct-horse-battery-staple",
+    name: "Owner",
   });
   const cookie = signUp.headers.get("set-cookie");
   if (!cookie) throw new Error("sign-up returned no session cookie");

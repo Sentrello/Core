@@ -1,7 +1,11 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { db, eq, schema } from "@sentrello/db";
 import { auth } from "./index";
-import { signUpAllowed } from "./signup-policy";
+import {
+  setupTokenAccepted,
+  setupTokenRequired,
+  signUpAllowed,
+} from "./signup-policy";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const orgId = `signup-policy-${suffix}`;
@@ -39,16 +43,6 @@ afterAll(async () => {
     await db.delete(schema.account).where(eq(schema.account.userId, u.id));
     await db.delete(schema.user).where(eq(schema.user.id, u.id));
   }
-});
-
-test("an unclaimed instance allows sign-up so the owner can claim it", async () => {
-  // no organization rows for this test's purposes is the normal empty-instance
-  // case; the suite cleans up after itself so this reflects a fresh install
-  const orgs = await db.select().from(schema.organizations).limit(1);
-  if (orgs.length > 0) return; // another suite's fixture is live; covered below
-  expect((await signUpAllowed("anyone@example.test", false)).allowed).toBe(
-    true,
-  );
 });
 
 test("once claimed, an uninvited stranger is refused", async () => {
@@ -103,8 +97,6 @@ test("the opt-in reopens registration for anyone who wants that", async () => {
 });
 
 test("the guard actually blocks the HTTP sign-up endpoint", async () => {
-  const saved = process.env.SENTRELLO_ALLOW_SIGNUP;
-  process.env.SENTRELLO_ALLOW_SIGNUP = "false";
   await withOrganization(async () => {
     const email = `blocked-${suffix}@example.test`;
     createdEmails.push(email);
@@ -121,5 +113,26 @@ test("the guard actually blocks the HTTP sign-up endpoint", async () => {
       .where(eq(schema.user.email, email));
     expect(rows).toHaveLength(0);
   });
-  if (saved !== undefined) process.env.SENTRELLO_ALLOW_SIGNUP = saved;
+});
+
+test("the setup token is compared exactly, and in constant time", () => {
+  const expected = "s3cret-setup-token";
+  expect(setupTokenAccepted("s3cret-setup-token", expected)).toBe(true);
+  expect(setupTokenAccepted("s3cret-setup-toke", expected)).toBe(false); // short
+  expect(setupTokenAccepted("s3cret-setup-tokenX", expected)).toBe(false); // long
+  expect(setupTokenAccepted("S3CRET-SETUP-TOKEN", expected)).toBe(false); // case
+  expect(setupTokenAccepted("", expected)).toBe(false);
+  expect(setupTokenAccepted(undefined, expected)).toBe(false);
+});
+
+test("with no token configured, none is demanded", () => {
+  expect(setupTokenAccepted(undefined, undefined)).toBe(true);
+  expect(setupTokenRequired(undefined)).toBe(false);
+  expect(setupTokenRequired("anything")).toBe(true);
+});
+
+test("a fresh instance still refuses a direct sign-up: claiming goes through bootstrap", async () => {
+  // no organization exists in this branch, which used to be enough on its own
+  const decision = await signUpAllowed("first-comer@example.test", false);
+  expect(decision.allowed).toBe(false);
 });

@@ -2,18 +2,32 @@ import { and, db, eq, schema } from "@sentrello/db";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 
 /**
+ * Set only while the bootstrap route is creating the first owner.
+ *
+ * "This instance has no organization yet" is NOT sufficient on its own: the
+ * sign-up endpoint is public, so a stranger who reaches a fresh instance before
+ * its operator would claim it. Claiming therefore has to go through
+ * /api/bootstrap, which additionally requires the setup token.
+ */
+let bootstrapping = false;
+
+export function duringBootstrap<T>(fn: () => Promise<T>): Promise<T> {
+  bootstrapping = true;
+  return fn().finally(() => {
+    bootstrapping = false;
+  });
+}
+
+/**
  * Who may create an account on this instance.
  *
- * Left open, every deployed instance is a public sign-up form: anyone who finds
- * the URL can create an account and spin up their own organization inside
- * someone else's install. Sign-up is therefore closed by default, with exactly
- * three ways through:
+ * Left open, every deployed instance is a public sign-up form. Sign-up is
+ * closed by default, with exactly three ways through:
  *
- *  1. **First run.** No organization exists yet, so this is the owner claiming
- *     a fresh instance. Whoever gets there first owns it — which is why the
- *     installer tells the operator to complete setup immediately.
- *  2. **An invitation.** The address has a pending invitation from someone who
- *     already has the right to invite.
+ *  1. **The first-run owner**, and only via `/api/bootstrap` — never by calling
+ *     the sign-up endpoint directly.
+ *  2. **An invitation.** The address holds a pending invitation from someone
+ *     who already has the right to invite.
  *  3. **An explicit opt-in**, for anyone genuinely running open registration.
  */
 export async function signUpAllowed(
@@ -22,16 +36,11 @@ export async function signUpAllowed(
 ): Promise<
   { allowed: true; reason: string } | { allowed: false; reason: string }
 > {
+  if (bootstrapping) {
+    return { allowed: true, reason: "first-run owner via /api/bootstrap" };
+  }
   if (openRegistration) {
     return { allowed: true, reason: "open registration is enabled" };
-  }
-
-  const [existingOrg] = await db
-    .select({ id: schema.organizations.id })
-    .from(schema.organizations)
-    .limit(1);
-  if (!existingOrg) {
-    return { allowed: true, reason: "first run: claiming a new instance" };
   }
 
   if (email) {
@@ -49,6 +58,35 @@ export async function signUpAllowed(
   }
 
   return { allowed: false, reason: "sign-up is closed on this instance" };
+}
+
+/**
+ * Whether the caller holds the setup token, when one is configured.
+ *
+ * The installer writes a random token into the instance's .env, so claiming a
+ * fresh instance requires access to the machine running it rather than merely
+ * finding its URL first. Unset means no token is demanded, which suits an
+ * instance that is not publicly reachable yet.
+ */
+export function setupTokenAccepted(
+  provided: string | undefined,
+  expected = process.env.SENTRELLO_SETUP_TOKEN,
+): boolean {
+  if (!expected) return true;
+  if (!provided || provided.length !== expected.length) return false;
+
+  // constant time: this is a bearer credential
+  let mismatch = 0;
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+export function setupTokenRequired(
+  expected = process.env.SENTRELLO_SETUP_TOKEN,
+): boolean {
+  return Boolean(expected);
 }
 
 /** Rejects sign-ups that `signUpAllowed` does not permit. */

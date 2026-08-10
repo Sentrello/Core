@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./hono": "./src/hono.ts",
     "./bootstrap": "./src/bootstrap.ts",
-    "./permissions": "./src/permissions.ts"
+    "./permissions": "./src/permissions.ts",
+    "./testing": "./src/testing.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.0",

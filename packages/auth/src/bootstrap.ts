@@ -1,7 +1,12 @@
 import { db, schema } from "@sentrello/db";
 import type { SentrelloApp } from "@sentrello/module-sdk";
 import { auth } from "./index";
-import { signUpAllowed } from "./signup-policy";
+import {
+  duringBootstrap,
+  setupTokenAccepted,
+  setupTokenRequired,
+  signUpAllowed,
+} from "./signup-policy";
 
 export interface OwnerDetails {
   email: string;
@@ -26,10 +31,13 @@ export async function ensureBootstrapped(owner?: OwnerDetails) {
   if (!(await needsBootstrap())) return { bootstrapped: false as const };
   if (!owner) return { bootstrapped: false as const }; // waiting for the operator
 
-  const signUp = await auth.api.signUpEmail({
-    body: { email: owner.email, password: owner.password, name: owner.name },
-    returnHeaders: true,
-  });
+  // The sign-up guard refuses public sign-ups; this is the one sanctioned path.
+  const signUp = await duringBootstrap(() =>
+    auth.api.signUpEmail({
+      body: { email: owner.email, password: owner.password, name: owner.name },
+      returnHeaders: true,
+    }),
+  );
 
   // The organization created here IS the instance's tenant boundary, and the
   // creator gets `creatorRole: "admin"` — the Instance Owner.
@@ -56,6 +64,7 @@ export function registerBootstrapRoutes(app: SentrelloApp) {
     const needed = await needsBootstrap();
     return c.json({
       needed,
+      setupTokenRequired: setupTokenRequired(),
       // so the sign-in screen can decide whether to offer a "create account" link
       signUpOpen: (await signUpAllowed(undefined)).allowed,
     });
@@ -69,8 +78,16 @@ export function registerBootstrapRoutes(app: SentrelloApp) {
     }
 
     const body = await c.req.json().catch(() => ({}));
-    const { email, password, name, organizationName } =
-      body as Partial<OwnerDetails>;
+    const { email, password, name, organizationName, setupToken } =
+      body as Partial<OwnerDetails> & { setupToken?: string };
+
+    // A publicly reachable instance must not be claimable by whoever finds it
+    // first; the token proves access to the machine running it.
+    if (
+      !setupTokenAccepted(setupToken ?? c.req.header("x-sentrello-setup-token"))
+    ) {
+      return c.json({ error: "invalid_setup_token" }, 403);
+    }
     if (!email || !password || !name) {
       return c.json({ error: "email, password and name are required" }, 400);
     }
