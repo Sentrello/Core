@@ -1,7 +1,10 @@
 import type { EntitlementNeed } from "@sentrello/module-sdk";
 import { type JWTPayload, importSPKI, jwtVerify } from "jose";
+import { SENTRELLO_LICENSE_PUBLIC_KEY } from "./public-key";
 
 const ALG = "EdDSA"; // Ed25519
+
+export { SENTRELLO_LICENSE_PUBLIC_KEY } from "./public-key";
 
 export interface LicenseClaims extends JWTPayload {
   license_id: string;
@@ -18,10 +21,13 @@ export interface LicenseState {
   reason?: string;
 }
 
-/** Verify a token offline using the SPKI public-key PEM shipped in the core. */
+/**
+ * Verify a token offline using the SPKI public-key PEM shipped in the core.
+ * The key defaults to the embedded one, so a stock instance needs no config.
+ */
 export async function verifyLicenseToken(
   token: string,
-  publicKeyPem: string,
+  publicKeyPem: string = SENTRELLO_LICENSE_PUBLIC_KEY,
 ): Promise<LicenseState> {
   try {
     const pub = await importSPKI(publicKeyPem, ALG);

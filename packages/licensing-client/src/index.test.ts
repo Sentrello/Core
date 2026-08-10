@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
-import { SignJWT, importPKCS8 } from "jose";
-import { makeEntitlementGate, verifyLicenseToken } from "./index";
+import { SignJWT, importPKCS8, importSPKI } from "jose";
+import {
+  SENTRELLO_LICENSE_PUBLIC_KEY,
+  makeEntitlementGate,
+  verifyLicenseToken,
+} from "./index";
 
 const ALG = "EdDSA";
 const priv = await Bun.file("secrets/license_private.pem").text();
@@ -56,4 +60,20 @@ test("missing/garbage token downgrades to Free, does not throw", async () => {
   expect(makeEntitlementGate(state)({ tier: "pro" })).toBe(false);
   // Free needs are still satisfied with no license at all.
   expect(makeEntitlementGate(state)({})).toBe(true);
+});
+
+test("the embedded production key is a usable Ed25519 public key", async () => {
+  const key = await importSPKI(SENTRELLO_LICENSE_PUBLIC_KEY, ALG);
+  expect(key).toBeDefined();
+  expect(SENTRELLO_LICENSE_PUBLIC_KEY).toContain("-----BEGIN PUBLIC KEY-----");
+  // a public key only: shipping a private key in the open core would be fatal
+  expect(SENTRELLO_LICENSE_PUBLIC_KEY).not.toContain("PRIVATE KEY");
+});
+
+test("verification defaults to the embedded key, so a stock instance needs no config", async () => {
+  // A token from the dev keypair must NOT validate against the production key.
+  const token = await mint({ tier: "pro", modules: [] });
+  const state = await verifyLicenseToken(token);
+  expect(state.valid).toBe(false);
+  expect(makeEntitlementGate(state)({ tier: "pro" })).toBe(false);
 });
