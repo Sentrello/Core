@@ -15,6 +15,26 @@ export interface OwnerDetails {
   organizationName?: string;
 }
 
+/**
+ * Turns the `set-cookie` a sign-up responded with into the `cookie` header the
+ * next request has to send.
+ *
+ * Passing the response headers straight through looks right and fails silently:
+ * the server sees a `set-cookie` on an inbound request, finds no session, and
+ * answers 401 with an empty body.
+ */
+export function asRequestHeaders(responseHeaders: Headers): Headers {
+  const setCookie = responseHeaders.get("set-cookie");
+  if (!setCookie) return new Headers();
+  // strip attributes (Path, HttpOnly, SameSite…) from each cookie pair
+  const cookie = setCookie
+    .split(/,(?=[^;]+?=)/)
+    .map((part) => part.split(";")[0]?.trim())
+    .filter(Boolean)
+    .join("; ");
+  return new Headers({ cookie });
+}
+
 /** True when this instance has no organization, i.e. nobody owns it yet. */
 export async function needsBootstrap(): Promise<boolean> {
   const existing = await db.select().from(schema.organizations).limit(1);
@@ -44,7 +64,7 @@ export async function ensureBootstrapped(owner?: OwnerDetails) {
   const name = owner.organizationName ?? `${owner.name}'s business`;
   const organization = await auth.api.createOrganization({
     body: { name, slug: slugify(name) },
-    headers: signUp.headers,
+    headers: asRequestHeaders(signUp.headers),
   });
 
   return {

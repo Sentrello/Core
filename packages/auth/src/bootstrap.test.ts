@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { db, schema } from "@sentrello/db";
 import { eq } from "drizzle-orm";
-import { ensureBootstrapped } from "./bootstrap";
+import { asRequestHeaders, ensureBootstrapped } from "./bootstrap";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const orgId = `bootstrap-${suffix}`;
@@ -48,4 +48,31 @@ test("a second boot skips bootstrap and creates nothing", async () => {
 test("a fresh instance with no owner details waits rather than guessing", async () => {
   // the installer supplies the owner on first run; until then this is a no-op
   expect(await ensureBootstrapped()).toEqual({ bootstrapped: false });
+});
+
+test("a sign-up's set-cookie becomes the cookie the next request sends", () => {
+  const response = new Headers();
+  response.append(
+    "set-cookie",
+    "better-auth.session_token=abc123; Path=/; HttpOnly; SameSite=Lax",
+  );
+
+  const request = asRequestHeaders(response);
+  // the value the server will actually look for
+  expect(request.get("cookie")).toBe("better-auth.session_token=abc123");
+  // and not the response-shaped header, which is what produced a silent 401
+  expect(request.get("set-cookie")).toBeNull();
+});
+
+test("multiple cookies survive, attributes do not", () => {
+  const response = new Headers();
+  response.append(
+    "set-cookie",
+    "a=1; Path=/; HttpOnly, b=2; Path=/; Secure; SameSite=Strict",
+  );
+  expect(asRequestHeaders(response).get("cookie")).toBe("a=1; b=2");
+});
+
+test("no cookie at all yields empty headers rather than throwing", () => {
+  expect([...asRequestHeaders(new Headers()).keys()]).toEqual([]);
 });
