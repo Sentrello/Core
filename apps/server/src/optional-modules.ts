@@ -32,11 +32,48 @@ function isModule(value: unknown): value is SentrelloModule {
   );
 }
 
+/**
+ * Bundles unpacked by the installer, discovered by path.
+ *
+ * Resolution by package name would mean writing links into the image's
+ * node_modules, which the container cannot do when it runs as the customer's
+ * own uid. The bundles directory is theirs and always writable, so the host
+ * reads from there instead.
+ */
+async function discoverFromBundlesDir(dir: string): Promise<SentrelloModule[]> {
+  const found: SentrelloModule[] = [];
+  let entries: string[];
+  try {
+    const { readdir } = await import("node:fs/promises");
+    entries = await readdir(dir);
+  } catch {
+    return found; // no bundles directory: a Free instance
+  }
+
+  for (const name of entries) {
+    if (name.startsWith(".")) continue;
+    try {
+      const mod: unknown = await import(`${dir}/${name}/src/index.ts`);
+      const candidate = (mod as { default?: unknown }).default;
+      if (isModule(candidate)) found.push(candidate);
+      else console.warn(`[modules] bundle ${name} has no valid default export`);
+    } catch (err) {
+      console.warn(
+        `[modules] bundle ${name} could not be loaded: ${(err as Error).message}`,
+      );
+    }
+  }
+  return found;
+}
+
 /** Resolves whichever optional bundles are installed; missing ones are normal. */
 export async function discoverOptionalModules(
   packages: string[] = OPTIONAL_MODULE_PACKAGES,
+  bundlesDir = process.env.SENTRELLO_BUNDLES_DIR,
 ): Promise<SentrelloModule[]> {
   const found: SentrelloModule[] = [];
+
+  // development: bundles linked into node_modules by `bun link`
   for (const name of packages) {
     try {
       const mod: unknown = await import(name);
@@ -47,5 +84,14 @@ export async function discoverOptionalModules(
       // not installed on this instance — the overwhelmingly common case
     }
   }
+
+  // production: bundles the installer unpacked
+  if (bundlesDir) {
+    const seen = new Set(found.map((m) => m.id));
+    for (const module of await discoverFromBundlesDir(bundlesDir)) {
+      if (!seen.has(module.id)) found.push(module);
+    }
+  }
+
   return found;
 }
