@@ -1,3 +1,4 @@
+import type { ModuleJob } from "@sentrello/jobs";
 import type {
   EntitlementNeed,
   SentrelloEnv,
@@ -12,7 +13,7 @@ export function loadModules(
 ) {
   const nav: { id: string; label: string; order?: number }[] = [];
   const permissions: string[] = [];
-  const jobs: { name: string; cron?: string }[] = [];
+  const jobs: ModuleJob[] = [];
   const loaded = new Set<string>();
 
   // simple dependency-aware pass; repeat until no progress
@@ -32,7 +33,8 @@ export function loadModules(
         entitled,
         registerNav: (i) => nav.push(i),
         registerPermission: (p) => permissions.push(p),
-        registerJob: (j) => jobs.push({ name: j.name, cron: j.cron }),
+        // namespaced: two modules may both want a job called "reminders"
+        registerJob: (j) => jobs.push({ ...j, name: `${m.id}:${j.name}` }),
       });
       loaded.add(m.id);
       progress = true;

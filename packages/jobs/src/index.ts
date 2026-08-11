@@ -28,7 +28,21 @@ export const SCHEDULES: Record<string, string> = {
   [QUEUES.licenseRefresh]: "0 3 * * *",
 };
 
-export async function startJobs() {
+/** A job a module asked the host to run. */
+export interface ModuleJob {
+  name: string;
+  cron?: string;
+  handler: () => Promise<unknown>;
+}
+
+/**
+ * Starts the core queues, plus any a loaded module registered.
+ *
+ * Module jobs are namespaced so two modules cannot collide on a queue name,
+ * and so a job left behind by a module the licence no longer loads is obvious
+ * in the pg-boss tables.
+ */
+export async function startJobs(moduleJobs: ModuleJob[] = []) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
 
@@ -46,21 +60,22 @@ export async function startJobs() {
   });
   await boss.start();
 
-  const handlers = {
-    [QUEUES.recurringInvoices]: () => runRecurringInvoices(),
-    [QUEUES.overdueReminders]: () => sendOverdueReminders(),
-    [QUEUES.licenseRefresh]: () => refreshLicenseToken(),
-  };
+  const all: ModuleJob[] = [
+    { name: QUEUES.recurringInvoices, handler: () => runRecurringInvoices() },
+    { name: QUEUES.overdueReminders, handler: () => sendOverdueReminders() },
+    { name: QUEUES.licenseRefresh, handler: () => refreshLicenseToken() },
+    ...moduleJobs,
+  ];
 
-  for (const [queue, handler] of Object.entries(handlers)) {
+  for (const job of all) {
     // pg-boss 10 requires the queue to exist before work()/schedule() —
     // omitting this makes both silently no-op.
-    await boss.createQueue(queue);
-    await boss.work(queue, async () => {
-      await handler();
+    await boss.createQueue(job.name);
+    await boss.work(job.name, async () => {
+      await job.handler();
     });
-    const cron = SCHEDULES[queue];
-    if (cron) await boss.schedule(queue, cron);
+    const cron = job.cron ?? SCHEDULES[job.name];
+    if (cron) await boss.schedule(job.name, cron);
   }
 
   return boss;

@@ -73,6 +73,61 @@ test("dependency order is respected regardless of array order", () => {
   expect(loaded).toEqual(["a", "b", "c"]);
 });
 
+test("a module's job reaches the host with its handler intact", async () => {
+  let ran = 0;
+  const withJob = defineModule({
+    id: "scheduling",
+    tier: "module",
+    register(ctx) {
+      ctx.registerJob({
+        name: "reminders",
+        cron: "*/15 * * * *",
+        handler: async () => {
+          ran += 1;
+        },
+      });
+    },
+  });
+
+  const boughtScheduling = (need: { tier?: "pro"; module?: string }) =>
+    need.module === "scheduling";
+
+  const { jobs } = loadModules(new Hono<SentrelloEnv>(), boughtScheduling, [
+    withJob,
+    // this one was not bought, so its job must not be scheduled either
+    defineModule({
+      id: "inventory",
+      tier: "module",
+      register: (ctx) =>
+        ctx.registerJob({ name: "reminders", handler: async () => {} }),
+    }),
+  ]);
+
+  // namespaced, so two modules asking for "reminders" cannot collide
+  expect(jobs.map((j) => j.name)).toEqual(["scheduling:reminders"]);
+  expect(jobs[0]?.cron).toBe("*/15 * * * *");
+
+  await jobs[0]?.handler();
+  expect(ran).toBe(1);
+});
+
+test("a job from an unentitled module is never scheduled", () => {
+  const { jobs } = loadModules(new Hono<SentrelloEnv>(), freeGate, [
+    defineModule({
+      id: "scheduling",
+      tier: "module",
+      register: (ctx) =>
+        ctx.registerJob({
+          name: "reminders",
+          handler: async () => {
+            throw new Error("must not run");
+          },
+        }),
+    }),
+  ]);
+  expect(jobs).toEqual([]);
+});
+
 test("a skipped module registers no routes", async () => {
   const app = new Hono<SentrelloEnv>();
   loadModules(app, freeGate, [mod("hr", "module")]);

@@ -28,7 +28,7 @@ const modules: SentrelloModule[] = [
   bookkeeping,
   ...(await discoverOptionalModules()),
 ];
-const { nav, loaded } = loadModules(app, gate, modules);
+const { nav, loaded, jobs } = loadModules(app, gate, modules);
 
 // A module brings its own tables. Applying them here — after the licence has
 // decided what loads — means a customer who buys a module gets its schema on the
@@ -63,7 +63,7 @@ serveWeb(app);
 
 // Jobs run only in the real server process, never when a test imports this file.
 if (import.meta.main) {
-  await startJobs();
+  await startJobs(jobs);
 }
 
 const port = Number(process.env.PORT ?? 3000);

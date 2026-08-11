@@ -38,10 +38,15 @@ export interface ModuleContext {
   entitled: (need: EntitlementNeed) => boolean;
   registerNav: (item: { id: string; label: string; order?: number }) => void;
   registerPermission: (permission: string) => void;
+  /**
+   * Background work. The name is namespaced with the module id by the host, so
+   * `reminders` is safe even if another module wants the same word. Without a
+   * `cron` the queue exists but only runs when something sends to it.
+   */
   registerJob: (job: {
     name: string;
     cron?: string;
-    handler: () => Promise<void>;
+    handler: () => Promise<unknown>;
   }) => void;
 }
 
