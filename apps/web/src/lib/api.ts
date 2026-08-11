@@ -19,8 +19,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export type Meta = {
-  nav: { id: string; label: string; order?: number }[];
+  /** `moduleId` is which module registered the entry, and owns its screens. */
+  nav: { id: string; label: string; order?: number; moduleId: string }[];
   loaded: string[];
+  /** module ids that shipped screens this instance may serve */
+  ui: string[];
 };
 
 export type Contact = {

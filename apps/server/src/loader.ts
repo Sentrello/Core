@@ -11,7 +11,15 @@ export function loadModules(
   entitled: (need: EntitlementNeed) => boolean,
   modules: SentrelloModule[],
 ) {
-  const nav: { id: string; label: string; order?: number }[] = [];
+  // The nav id is the module's choice and need not match its module id —
+  // "time-tracking" registers a "Time" entry — so each item carries the module
+  // it came from, which is what the browser needs to fetch its screens.
+  const nav: {
+    id: string;
+    label: string;
+    order?: number;
+    moduleId: string;
+  }[] = [];
   const permissions: string[] = [];
   const jobs: ModuleJob[] = [];
   const loaded = new Set<string>();
@@ -31,7 +39,7 @@ export function loadModules(
       m.register({
         app,
         entitled,
-        registerNav: (i) => nav.push(i),
+        registerNav: (i) => nav.push({ ...i, moduleId: m.id }),
         registerPermission: (p) => permissions.push(p),
         // namespaced: two modules may both want a job called "reminders"
         registerJob: (j) => jobs.push({ ...j, name: `${m.id}:${j.name}` }),

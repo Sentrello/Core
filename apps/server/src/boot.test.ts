@@ -27,7 +27,11 @@ test("free modules load without any license", () => {
     mod("crm", "free"),
   ]);
   expect(loaded).toEqual(["crm"]);
-  expect(nav).toEqual([{ id: "crm", label: "crm", order: 10 }]);
+  // the module that registered the entry travels with it: the browser fetches
+  // that module's screens, and a nav id is not always a module id
+  expect(nav).toEqual([
+    { id: "crm", label: "crm", order: 10, moduleId: "crm" },
+  ]);
   expect(permissions).toEqual(["crm:read"]);
 });
 

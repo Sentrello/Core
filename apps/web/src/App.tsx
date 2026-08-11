@@ -110,9 +110,15 @@ export default function App() {
         {(() => {
           const Screen = SCREENS[active];
           if (Screen) return <Screen />;
-          // Not a Core screen: the module may have shipped its own.
-          const label = nav.find((n) => n.id === active)?.label ?? active;
-          return <ModuleScreen id={active} label={label} />;
+          // Not a Core screen: the module may have shipped its own. The
+          // script is fetched by module id, which is not always the nav id.
+          const entry = nav.find((n) => n.id === active);
+          return (
+            <ModuleScreen
+              id={entry?.moduleId ?? active}
+              label={entry?.label ?? active}
+            />
+          );
         })()}
       </main>
     </div>
