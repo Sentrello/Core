@@ -83,6 +83,16 @@ export function loadModuleScreen(
   if (existing) return existing.then(() => pick());
 
   const promise = new Promise<ScreenComponent | null>((resolve) => {
+    // Stylesheet first, so the screen never paints unstyled. It is allowed to
+    // be missing: a module with no classes of its own needs none.
+    const href = `/modules/${encodeURIComponent(moduleId)}/ui.css`;
+    if (!document.querySelector(`link[href="${href}"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = href;
+      document.head.append(link);
+    }
+
     const script = document.createElement("script");
     script.src = `/modules/${encodeURIComponent(moduleId)}/ui.js`;
     script.async = true;

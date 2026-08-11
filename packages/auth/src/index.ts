@@ -1,4 +1,5 @@
 import { db, schema } from "@sentrello/db";
+import { asc, eq } from "@sentrello/db/orm";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
@@ -24,6 +25,39 @@ export const auth = betterAuth({
   ...(google ? { socialProviders: google } : {}),
   // Closed by default: first-run owner, invitation, or an explicit opt-in.
   hooks: { before: signUpGuard },
+  databaseHooks: {
+    session: {
+      create: {
+        /**
+         * Give every new session an active organization.
+         *
+         * Without this, signing in leaves `activeOrganizationId` null, and
+         * since every business query is scoped by it the whole application
+         * quietly behaves as though the business were empty: lists come back
+         * with nothing in them and writes are refused as unauthorised. One
+         * organization per instance is the norm, so the first membership is
+         * the right answer; a user in several keeps whichever they pick.
+         */
+        before: async (session) => {
+          const [membership] = await db
+            .select({ organizationId: schema.member.organizationId })
+            .from(schema.member)
+            .where(eq(schema.member.userId, session.userId))
+            .orderBy(asc(schema.member.createdAt))
+            .limit(1);
+
+          return membership
+            ? {
+                data: {
+                  ...session,
+                  activeOrganizationId: membership.organizationId,
+                },
+              }
+            : undefined;
+        },
+      },
+    },
+  },
   plugins: [
     organization({
       ac,

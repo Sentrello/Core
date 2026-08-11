@@ -113,6 +113,24 @@ test("the owner's session resolves to the organization it created", async () => 
   expect(session?.session.activeOrganizationId).toBe(orgId);
 });
 
+test("signing in later still lands in the organization", async () => {
+  // The session made while creating the organization has it set. A session
+  // made by signing in tomorrow is a different row, and if it comes back
+  // without an active organization the whole instance behaves as though the
+  // business were empty: every list is empty and every write is refused.
+  const signIn = await auth.api.signInEmail({
+    body: { email: emails.owner, password },
+    returnHeaders: true,
+  });
+  const cookie = signIn.headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-in returned no session cookie");
+
+  const session = await auth.api.getSession({
+    headers: new Headers({ cookie }),
+  });
+  expect(session?.session.activeOrganizationId).toBe(orgId);
+});
+
 test("accounting can send invoices through a real session", async () => {
   const result = await auth.api.hasPermission({
     headers: accountingHeaders,

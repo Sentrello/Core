@@ -24,6 +24,28 @@ export function serveModuleUi(
       .map((m) => [m.id, m.ui as string]),
   );
 
+  /**
+   * A module's own stylesheet, sitting beside its script.
+   *
+   * Modules need one: Tailwind builds Core's stylesheet by scanning Core's
+   * source, so a class a module uses and Core does not would simply not exist.
+   * Each module therefore compiles its own utilities.
+   */
+  app.get("/modules/:id/ui.css", async (c) => {
+    const js = paths.get(c.req.param("id"));
+    if (!js) return c.notFound();
+
+    const file = Bun.file(js.replace(/\.js$/, ".css"));
+    if (!(await file.exists())) return c.notFound();
+
+    return new Response(file, {
+      headers: {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "public, max-age=300",
+      },
+    });
+  });
+
   app.get("/modules/:id/ui.js", async (c) => {
     // The path served comes from the module, never from the request: the id is
     // only ever a map key, so there is nothing here to traverse with.
