@@ -4,6 +4,11 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
+import {
+  CORE_ACCOUNTS,
+  ensureAccount,
+  postJournalEntry,
+} from "@sentrello/db/ledger";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, eq } from "drizzle-orm";
 
@@ -72,6 +77,23 @@ export default defineModule({
         if (!Number.isInteger(body.amountCents)) {
           return c.json({ error: "amountCents must be integer cents" }, 400);
         }
+        // An account id is supplied by the caller, so it is checked against
+        // this organization before anything is posted to it: an id belonging
+        // to another tenant must not become a journal line here.
+        if (body.accountId) {
+          const [owned] = await db
+            .select({ id: schema.accounts.id })
+            .from(schema.accounts)
+            .where(
+              and(
+                eq(schema.accounts.id, String(body.accountId)),
+                eq(schema.accounts.organizationId, orgId),
+              ),
+            )
+            .limit(1);
+          if (!owned) return c.json({ error: "unknown account" }, 400);
+        }
+
         const [row] = await db
           .insert(schema.expenses)
           .values({
@@ -83,6 +105,27 @@ export default defineModule({
             ...(body.spentAt ? { spentAt: new Date(body.spentAt) } : {}),
           })
           .returning();
+        if (!row) throw new Error("expense insert returned no row");
+
+        // Spending money is an accounting event: Dr Expense / Cr Cash. Without
+        // this the row exists but the profit and loss — which is read from the
+        // ledger, not from this table — reports no expenses at all.
+        const [expenseAccount, cash] = await Promise.all([
+          body.accountId
+            ? Promise.resolve(String(body.accountId))
+            : ensureAccount(orgId, CORE_ACCOUNTS.generalExpense),
+          ensureAccount(orgId, CORE_ACCOUNTS.cash),
+        ]);
+        await postJournalEntry(
+          orgId,
+          body.vendor ? `Expense — ${body.vendor}` : "Expense",
+          `expense:${row.id}`,
+          [
+            { accountId: expenseAccount, debitCents: row.amountCents },
+            { accountId: cash, creditCents: row.amountCents },
+          ],
+        );
+
         return c.json({ expense: row }, 201);
       },
     );

@@ -13,6 +13,8 @@ export const CORE_ACCOUNTS = {
   },
   salesIncome: { code: "4000", name: "Sales Income", type: "income" },
   taxPayable: { code: "2200", name: "Tax Payable", type: "liability" },
+  /** Where an expense lands when it has not been given an account of its own. */
+  generalExpense: { code: "6000", name: "General Expenses", type: "expense" },
 } as const;
 
 /** Idempotently resolves one of the core accounts for an organization. */

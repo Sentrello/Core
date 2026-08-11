@@ -2,9 +2,26 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Meta, api } from "./lib/api";
 import { authClient, useSession } from "./lib/auth";
+import { Bookkeeping } from "./routes/bookkeeping";
 import { Contacts } from "./routes/contacts";
+import { Forms } from "./routes/forms";
+import { Invoices } from "./routes/invoices";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
+
+/**
+ * Which screen a nav entry opens.
+ *
+ * Keyed by the module id the server registered, so a module the licence does
+ * not load has no nav entry and no way in. A module whose screens ship
+ * elsewhere simply has no entry here yet.
+ */
+const SCREENS: Record<string, () => React.ReactElement> = {
+  crm: Contacts,
+  invoicing: Invoices,
+  bookkeeping: Bookkeeping,
+  forms: Forms,
+};
 
 function useMeta() {
   return useQuery({
@@ -89,13 +106,17 @@ export default function App() {
         <h1 className="mb-4 text-lg font-semibold">
           {nav.find((n) => n.id === active)?.label ?? "Dashboard"}
         </h1>
-        {active === "crm" ? (
-          <Contacts />
-        ) : (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            This module is enabled. Its screens arrive with the rest of Round 1.
-          </p>
-        )}
+        {(() => {
+          const Screen = SCREENS[active];
+          return Screen ? (
+            <Screen />
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              This module is enabled and its API is live. Its screens are not
+              part of this release.
+            </p>
+          );
+        })()}
       </main>
     </div>
   );

@@ -30,3 +30,46 @@ export type Contact = {
   phone: string | null;
   kind: string;
 };
+
+/** Money is integer cents on the wire, as it is everywhere else. */
+export type Invoice = {
+  id: string;
+  number: string;
+  contactId: string | null;
+  status: string;
+  currency: string;
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  dueDate: string | null;
+  issuedAt: string | null;
+};
+
+export type Account = {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+};
+
+export type Expense = {
+  id: string;
+  vendor: string | null;
+  amountCents: number;
+  spentAt: string;
+  accountId: string | null;
+};
+
+export type ProfitAndLoss = {
+  incomeCents: number;
+  expenseCents: number;
+  netCents: number;
+};
+
+export type FormDefinition = {
+  id: string;
+  key: string;
+  name: string;
+  kind: string;
+  submissionCount?: number;
+};
