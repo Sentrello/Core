@@ -115,7 +115,8 @@ export default function App() {
           const entry = nav.find((n) => n.id === active);
           return (
             <ModuleScreen
-              id={entry?.moduleId ?? active}
+              moduleId={entry?.moduleId ?? active}
+              screenId={active}
               label={entry?.label ?? active}
             />
           );

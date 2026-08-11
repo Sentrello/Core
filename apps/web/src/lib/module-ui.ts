@@ -57,38 +57,51 @@ export function installRuntime(): SentrelloRuntime {
 const inFlight = new Map<string, Promise<ScreenComponent | null>>();
 
 /**
- * Fetches a module's screen, once per page load.
+ * Fetches a screen from a module, once per page load.
+ *
+ * One module may own several screens — pro-core registers both Deals and
+ * Reports — so the script is fetched per module and the screen looked up by
+ * the nav entry that asked for it. A module with a single screen can register
+ * it under its own id and needs to know none of this.
  *
  * A module whose script is missing or broken resolves to null rather than
  * throwing: the rest of the application — invoicing, the ledger — must keep
  * working when one module's screen does not.
  */
-export function loadModuleScreen(id: string): Promise<ScreenComponent | null> {
+export function loadModuleScreen(
+  moduleId: string,
+  screenId = moduleId,
+): Promise<ScreenComponent | null> {
   const runtime = installRuntime();
-  const already = runtime.screens[id];
+  const pick = () =>
+    runtime.screens[screenId] ?? runtime.screens[moduleId] ?? null;
+
+  const already = pick();
   if (already) return Promise.resolve(already);
 
-  const existing = inFlight.get(id);
-  if (existing) return existing;
+  const existing = inFlight.get(moduleId);
+  if (existing) return existing.then(() => pick());
 
   const promise = new Promise<ScreenComponent | null>((resolve) => {
     const script = document.createElement("script");
-    script.src = `/modules/${encodeURIComponent(id)}/ui.js`;
+    script.src = `/modules/${encodeURIComponent(moduleId)}/ui.js`;
     script.async = true;
     script.onload = () => {
-      const screen = window.__sentrello?.screens[id] ?? null;
+      const screen = pick();
       if (!screen) {
-        console.warn(`[modules] ${id} loaded but registered no screen`);
+        console.warn(
+          `[modules] ${moduleId} loaded but registered no screen for ${screenId}`,
+        );
       }
       resolve(screen);
     };
     script.onerror = () => {
-      console.warn(`[modules] ${id} has no screens on this instance`);
+      console.warn(`[modules] ${moduleId} has no screens on this instance`);
       resolve(null);
     };
     document.head.append(script);
   });
 
-  inFlight.set(id, promise);
+  inFlight.set(moduleId, promise);
   return promise;
 }

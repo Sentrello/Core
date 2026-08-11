@@ -9,7 +9,15 @@ import { Empty, Loading } from "../lib/ui";
  * to show. A module's screen failing to load is a missing page, not a broken
  * application.
  */
-export function ModuleScreen({ id, label }: { id: string; label: string }) {
+export function ModuleScreen({
+  moduleId,
+  screenId,
+  label,
+}: {
+  moduleId: string;
+  screenId: string;
+  label: string;
+}) {
   const [state, setState] = useState<{
     status: "loading" | "ready" | "missing";
     Screen?: () => React.ReactElement | null;
@@ -18,14 +26,14 @@ export function ModuleScreen({ id, label }: { id: string; label: string }) {
   useEffect(() => {
     let live = true;
     setState({ status: "loading" });
-    loadModuleScreen(id).then((Screen) => {
+    loadModuleScreen(moduleId, screenId).then((Screen) => {
       if (!live) return;
       setState(Screen ? { status: "ready", Screen } : { status: "missing" });
     });
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [moduleId, screenId]);
 
   if (state.status === "loading") return <Loading />;
   if (state.status === "missing" || !state.Screen) {
