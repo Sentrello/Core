@@ -45,12 +45,27 @@ export interface ModuleContext {
   }) => void;
 }
 
+/**
+ * A module's own tables.
+ *
+ * Each module keeps its migrations to itself, tracked in its own table, so
+ * installing or removing a module never disturbs another's history. The host
+ * applies them at boot for modules the licence actually loads.
+ */
+export interface ModuleMigrations {
+  /** absolute path to the drizzle output folder, usually `${import.meta.dir}/../drizzle` */
+  dir: string;
+  /** the module's own migrations table, e.g. `__drizzle_migrations_time_tracking` */
+  table: string;
+}
+
 /** Every Free, Pro, and optional module implements exactly this. */
 export interface SentrelloModule {
   id: string;
   tier: Tier;
   /** ids of modules that must load first */
   requires?: string[];
+  migrations?: ModuleMigrations;
   register(ctx: ModuleContext): void;
 }
 

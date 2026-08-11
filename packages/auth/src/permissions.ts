@@ -12,6 +12,10 @@ export const statement = {
   bookkeeping: ["read", "create", "update", "delete"],
   reports: ["read"],
   settings: ["read", "update"],
+  // Optional modules declare their resources here too: the access-control
+  // statement is compiled into the client as well as the server, so it cannot
+  // be extended at runtime by a bundle.
+  time: ["read", "create", "update", "delete", "approve"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -25,6 +29,7 @@ export const admin = ac.newRole({
   bookkeeping: ["read", "create", "update", "delete"],
   reports: ["read"],
   settings: ["read", "update"],
+  time: ["read", "create", "update", "delete", "approve"],
 });
 
 export const accounting = ac.newRole({
@@ -33,6 +38,9 @@ export const accounting = ac.newRole({
   bookkeeping: ["read", "create", "update", "delete"],
   reports: ["read"],
   settings: ["read"],
+  // approving time is what turns it into something invoiceable, so it belongs
+  // with the people who invoice
+  time: ["read", "approve"],
 });
 
 export const staff = ac.newRole({
@@ -40,6 +48,8 @@ export const staff = ac.newRole({
   invoicing: ["read"],
   reports: [],
   settings: [],
+  // everyone tracks their own time; approving it is someone else's job
+  time: ["read", "create", "update"],
 });
 
 // External portal users — RBAC is intentionally tiny; row-level scoping to their

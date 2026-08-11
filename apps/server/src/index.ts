@@ -1,5 +1,6 @@
 import { registerBootstrapRoutes } from "@sentrello/auth/bootstrap";
 import { mountAuth } from "@sentrello/auth/hono";
+import { runModuleMigrations } from "@sentrello/db/module-migrations";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
 import crm from "@sentrello/module-crm";
@@ -28,6 +29,23 @@ const modules: SentrelloModule[] = [
   ...(await discoverOptionalModules()),
 ];
 const { nav, loaded } = loadModules(app, gate, modules);
+
+// A module brings its own tables. Applying them here — after the licence has
+// decided what loads — means a customer who buys a module gets its schema on the
+// next restart, and one they are not entitled to never touches their database.
+for (const module of modules) {
+  if (!module.migrations || !loaded.includes(module.id)) continue;
+  try {
+    await runModuleMigrations(module.migrations.dir, module.migrations.table);
+    console.log(`[modules] migrated ${module.id}`);
+  } catch (err) {
+    // A module whose schema failed must not take the whole instance down: the
+    // rest of the business still needs to invoice today.
+    console.error(
+      `[modules] ${module.id} migrations failed, its features may not work: ${(err as Error).message}`,
+    );
+  }
+}
 
 app.get("/healthz", (c) =>
   c.json({
