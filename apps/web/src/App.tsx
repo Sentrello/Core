@@ -6,6 +6,7 @@ import { Bookkeeping } from "./routes/bookkeeping";
 import { Contacts } from "./routes/contacts";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
+import { ModuleScreen } from "./routes/module-screen";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
 
@@ -108,14 +109,10 @@ export default function App() {
         </h1>
         {(() => {
           const Screen = SCREENS[active];
-          return Screen ? (
-            <Screen />
-          ) : (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              This module is enabled and its API is live. Its screens are not
-              part of this release.
-            </p>
-          );
+          if (Screen) return <Screen />;
+          // Not a Core screen: the module may have shipped its own.
+          const label = nav.find((n) => n.id === active)?.label ?? active;
+          return <ModuleScreen id={active} label={label} />;
         })()}
       </main>
     </div>

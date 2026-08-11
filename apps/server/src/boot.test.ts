@@ -177,6 +177,43 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
   expect(body.loaded).not.toContain("pro-core");
 });
 
+test("a module's screens are not served when the module did not load", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+
+  // Free instance: scheduling is not loaded, so its script must 404 rather
+  // than merely be hidden by the interface.
+  const res = await server.fetch(
+    new Request("http://localhost/modules/scheduling/ui.js"),
+  );
+  expect(res.status).toBe(404);
+
+  const meta = (await (
+    await server.fetch(new Request("http://localhost/api/_meta"))
+  ).json()) as { ui: string[] };
+  expect(meta.ui).toEqual([]);
+});
+
+test("a module id cannot be used to reach a file off the map", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+
+  for (const id of [
+    "../../../etc/passwd",
+    "..%2f..%2fpackage.json",
+    "crm/../../secrets",
+  ]) {
+    const res = await server.fetch(
+      new Request(`http://localhost/modules/${encodeURIComponent(id)}/ui.js`),
+    );
+    // The served path never comes from the request — the id is a map key, so
+    // there is nothing to traverse.
+    expect(res.status).toBe(404);
+  }
+});
+
 test("a business route is 401 without a session", async () => {
   process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
   process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";

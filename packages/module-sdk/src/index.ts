@@ -71,6 +71,19 @@ export interface SentrelloModule {
   /** ids of modules that must load first */
   requires?: string[];
   migrations?: ModuleMigrations;
+  /**
+   * Absolute path to this module's prebuilt browser screens, if it has any.
+   *
+   * The module names the file itself — `${import.meta.dir}/../ui/index.js` —
+   * because the same code runs from a linked checkout in development and from
+   * an unpacked bundle in production, and only the module knows where its own
+   * files are. The host serves it at `/modules/<id>/ui.js`, and only while the
+   * module is loaded: a screen for a feature the licence does not grant is
+   * never served, not merely hidden.
+   *
+   * The file is built, not source. Customers' servers have no build tools.
+   */
+  ui?: string;
   register(ctx: ModuleContext): void;
 }
 

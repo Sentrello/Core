@@ -10,6 +10,7 @@ import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
+import { serveModuleUi } from "./module-ui";
 import { discoverOptionalModules } from "./optional-modules";
 import { serveWeb } from "./static";
 
@@ -56,7 +57,9 @@ app.get("/healthz", (c) =>
   }),
 );
 
-app.get("/api/_meta", (c) => c.json({ nav, loaded }));
+const uiModules = serveModuleUi(app, modules, loaded);
+
+app.get("/api/_meta", (c) => c.json({ nav, loaded, ui: uiModules }));
 
 // last: everything unclaimed is the SPA
 serveWeb(app);
