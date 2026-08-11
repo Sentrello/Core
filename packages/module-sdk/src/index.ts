@@ -69,6 +69,8 @@ export interface SentrelloModule {
   register(ctx: ModuleContext): void;
 }
 
+export * from "./public-endpoints";
+
 export function defineModule(m: SentrelloModule): SentrelloModule {
   return m;
 }

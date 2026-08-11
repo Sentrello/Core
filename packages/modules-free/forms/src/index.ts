@@ -10,10 +10,11 @@ import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { defineModule } from "@sentrello/module-sdk";
 import {
   HONEYPOT_FIELD,
+  corsHeaders,
   looksAutomated,
   originAllowed,
   rateLimit,
-} from "./embed";
+} from "@sentrello/module-sdk";
 
 /** Per-form limit for public submissions. Generous for humans, hostile to bots. */
 const SUBMIT_LIMIT = 5;
@@ -244,17 +245,6 @@ export default defineModule({
     });
   },
 });
-
-function corsHeaders(origin: string | undefined): Record<string, string> {
-  if (!origin) return {};
-  return {
-    "access-control-allow-origin": origin,
-    "access-control-allow-methods": "POST, GET, OPTIONS",
-    "access-control-allow-headers": "content-type",
-    "access-control-max-age": "600",
-    vary: "Origin",
-  };
-}
 
 async function formByKey(key: string) {
   const [form] = await db

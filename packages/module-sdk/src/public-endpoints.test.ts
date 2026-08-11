@@ -5,7 +5,7 @@ import {
   originAllowed,
   rateLimit,
   resetRateLimits,
-} from "./embed";
+} from "@sentrello/module-sdk";
 
 test("a listed origin is allowed and echoed back", () => {
   const d = originAllowed("https://acme.com", ["https://acme.com"]);

@@ -3,7 +3,7 @@ import { auth } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, eq, inArray, schema } from "@sentrello/db";
 import { registerForTest } from "@sentrello/module-sdk";
-import { HONEYPOT_FIELD, resetRateLimits } from "./embed";
+import { HONEYPOT_FIELD, resetRateLimits } from "@sentrello/module-sdk";
 import forms from "./index";
 
 const suffix = crypto.randomUUID().slice(0, 8);

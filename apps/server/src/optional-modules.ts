@@ -14,6 +14,7 @@ import type { SentrelloModule } from "@sentrello/module-sdk";
 export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/pro-core",
   "@sentrello/mod-time-tracking",
+  "@sentrello/mod-scheduling",
   // sentrello.com only, and additionally gated by SENTRELLO_CONTROL_PLANE=true
   "@sentrello/control-plane",
   "@sentrello/mod-scheduling",

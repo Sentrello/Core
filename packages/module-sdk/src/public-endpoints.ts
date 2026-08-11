@@ -1,9 +1,11 @@
 /**
- * Origin checking and rate limiting for public form endpoints.
+ * Origin checking, rate limiting and bot detection for public endpoints.
  *
- * These endpoints are unauthenticated by necessity — they are pasted into other
- * people's web pages — so the protections here are the only thing between a
- * customer's CRM and the open internet.
+ * Embedded forms and public booking pages are unauthenticated by necessity —
+ * they are pasted into other people's web pages — so these are the only thing
+ * between a customer's data and the open internet. Shared here because every
+ * module that opens a public endpoint needs the same three guards, and a second
+ * implementation is a second set of mistakes.
  */
 
 export interface OriginDecision {
@@ -111,6 +113,20 @@ export function resetRateLimits() {
 
 /** The field bots fill in and humans never see. */
 export const HONEYPOT_FIELD = "_sentrello_hp";
+
+/** CORS headers for an allowed origin; nothing at all for a refused one. */
+export function corsHeaders(
+  origin: string | undefined,
+): Record<string, string> {
+  if (!origin) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, GET, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "600",
+    vary: "Origin",
+  };
+}
 
 export function looksAutomated(payload: Record<string, unknown>): boolean {
   const trap = payload[HONEYPOT_FIELD];
