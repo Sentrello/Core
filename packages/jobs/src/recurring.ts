@@ -4,7 +4,7 @@ import {
   ensureAccount,
   postJournalEntry,
 } from "@sentrello/db/ledger";
-import { lineTotals } from "@sentrello/db/money";
+import { MoneyError, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { and, eq, lte } from "drizzle-orm";
 import { type Interval, nextRun } from "./dates";
@@ -32,10 +32,25 @@ export async function runRecurringInvoices(now = new Date()) {
     );
 
   let issued = 0;
+  const skipped: { profileId: string; reason: string }[] = [];
   for (const profile of due) {
     const lines = (profile.templateJson.lines ?? []) as TemplateLine[];
-    const t = lineTotals(lines);
     const orgId = profile.organizationId;
+
+    // One unusable template must not stop the run: every other business's
+    // invoices are due today too. The profile keeps its nextRunAt, so it is
+    // retried once someone fixes it rather than being silently skipped forever.
+    let t: ReturnType<typeof lineTotals>;
+    try {
+      t = lineTotals(lines);
+    } catch (err) {
+      if (!(err instanceof MoneyError)) throw err;
+      console.error(
+        `[recurring] profile ${profile.id} has an unusable template: ${err.message}`,
+      );
+      skipped.push({ profileId: profile.id, reason: err.message });
+      continue;
+    }
 
     const invoice = await db.transaction(async (tx) => {
       const [inv] = await tx
@@ -89,5 +104,5 @@ export async function runRecurringInvoices(now = new Date()) {
     issued++;
   }
 
-  return { issued };
+  return { issued, skipped };
 }

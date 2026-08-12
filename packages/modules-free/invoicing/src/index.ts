@@ -9,7 +9,7 @@ import {
   ensureAccount,
   postJournalEntry,
 } from "@sentrello/db/ledger";
-import { invoiceStatus, lineTotals } from "@sentrello/db/money";
+import { MoneyError, invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { contactByPortalToken, ensurePortalToken } from "@sentrello/db/portal";
 import { emailAdapter } from "@sentrello/email";
@@ -159,7 +159,18 @@ export default defineModule({
         const orgId = activeOrganizationId(c.get("session"));
         const { contactId, currency, dueDate, lines } = await c.req.json();
         const incoming: IncomingLine[] = lines ?? [];
-        const t = lineTotals(incoming);
+
+        // A malformed line is the client's mistake, not a server fault: say
+        // which line and what is wrong with it rather than answering 500.
+        let t: ReturnType<typeof lineTotals>;
+        try {
+          t = lineTotals(incoming);
+        } catch (err) {
+          if (err instanceof MoneyError) {
+            return c.json({ error: err.message }, 400);
+          }
+          throw err;
+        }
 
         const invoice = await db.transaction(async (tx) => {
           const [inv] = await tx
@@ -399,7 +410,16 @@ export default defineModule({
         const orgId = activeOrganizationId(c.get("session"));
         const { contactId, currency, lines } = await c.req.json();
         const incoming: IncomingLine[] = lines ?? [];
-        const t = lineTotals(incoming);
+
+        let t: ReturnType<typeof lineTotals>;
+        try {
+          t = lineTotals(incoming);
+        } catch (err) {
+          if (err instanceof MoneyError) {
+            return c.json({ error: err.message }, 400);
+          }
+          throw err;
+        }
 
         const quote = await db.transaction(async (tx) => {
           const [q] = await tx

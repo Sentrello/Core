@@ -773,3 +773,68 @@ test("the invoice list only returns this organization's rows", async () => {
   expect(body.invoices.length).toBeGreaterThan(0);
   expect(body.invoices.every((i) => i.organizationId === orgId)).toBe(true);
 });
+
+/**
+ * The shape a client gets wrong most often is the field names on a line.
+ *
+ * Sending unitPriceCents instead of unitPrice used to multiply out to NaN,
+ * reach Postgres, and come back as a bare 500 with a stack trace in the logs —
+ * no indication of which field was wrong.
+ */
+test("a malformed invoice line is a 400 that names the problem", async () => {
+  const res = await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "Consumer unit replacement",
+          quantity: 1,
+          unitPriceCents: 48500,
+          taxRateBasisPoints: 875,
+        },
+      ],
+    }),
+  });
+
+  expect(res.status).toBe(400);
+  const body = (await res.json()) as { error: string };
+  expect(body.error).toContain("unitPrice");
+  expect(body.error).toContain("line 1");
+});
+
+test("a malformed quote line is refused the same way", async () => {
+  const res = await app.request("http://localhost/api/quotes", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      lines: [{ description: "Survey", quantity: 1, unitPrice: "500" }],
+    }),
+  });
+  expect(res.status).toBe(400);
+});
+
+test("a rejected invoice leaves nothing behind", async () => {
+  const before = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.organizationId, orgId));
+
+  await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      lines: [{ description: "Bad", quantity: 1, unitPriceCents: 100 }],
+    }),
+  });
+
+  const after = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.organizationId, orgId));
+  expect(after).toHaveLength(before.length);
+});
