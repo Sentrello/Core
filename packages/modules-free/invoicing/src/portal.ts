@@ -178,17 +178,26 @@ export function portalPage(args: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${html(businessName)} — your invoices</title>
+<title>${html(businessName)} — your account</title>
 <style>${STYLE}</style>
 </head><body><main>
 <h1>${html(businessName)}</h1>
 <p class="sub">For ${html(customerName)}</p>
 ${quoteSection(quotes, quotePath)}
+${
+  invoices.length === 0
+    ? // An empty table with headers, under a quote awaiting approval, reads as
+      // though something failed to load. Say nothing instead.
+      quotes.some((q) => q.status === "sent")
+      ? ""
+      : `<p class="muted">Nothing outstanding.</p>`
+    : `<h2 class="section">Your invoices</h2>
 <table>
   <thead><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
-${owed > 0 ? `<p class="owed">${html(money(owed, currency))} outstanding</p>` : `<p class="owed paid">Nothing outstanding</p>`}
+${owed > 0 ? `<p class="owed">${html(money(owed, currency))} outstanding</p>` : `<p class="owed paid">Nothing outstanding</p>`}`
+}
 <p class="muted" style="margin-top:2rem">This page is private to you. Anyone
 with the link can see it, so treat it like a bill in the post.</p>
 </main></body></html>`;

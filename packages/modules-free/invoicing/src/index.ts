@@ -83,6 +83,18 @@ async function sendReceipt(
 }
 
 /**
+ * When an invoice raised from a quote falls due.
+ *
+ * Thirty days, because an invoice with no due date can never be late: it sits
+ * outside every aging bucket and never appears on the list of who owes you.
+ * A quote carries no terms of its own, so this is the assumption — worth
+ * making configurable once anyone asks for different terms.
+ */
+function defaultDueDate(): Date {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+}
+
+/**
  * The entry raising an invoice makes: Dr Accounts Receivable, Cr Income, plus
  * any tax. Shared so every path that issues an invoice posts the same thing.
  */
@@ -835,6 +847,7 @@ export default defineModule({
               "invoice",
             ),
             status: "open",
+            dueDate: defaultDueDate(),
             subtotalCents: quote.subtotalCents,
             taxCents: quote.taxCents,
             totalCents: quote.totalCents,

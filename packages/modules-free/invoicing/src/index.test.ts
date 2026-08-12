@@ -674,6 +674,10 @@ test("a customer accepting a quote raises an invoice that reaches the books", as
     .from(schema.invoices)
     .where(eq(schema.invoices.quoteId, quoteId));
   expect(invoice?.totalCents).toBe(45000);
+  // An invoice with no due date can never be late, so it never appears on the
+  // list of who owes you.
+  expect(invoice?.dueDate).not.toBeNull();
+  expect(invoice?.dueDate?.getTime()).toBeGreaterThan(Date.now());
 
   const lines = await ledgerFor(`invoice:${invoice?.id}`);
   expect(lines.length).toBeGreaterThan(0);

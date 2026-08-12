@@ -156,3 +156,30 @@ test("the page asks not to be indexed", () => {
   });
   expect(html).toContain('name="robots" content="noindex"');
 });
+
+test("a customer with only a quote is not shown an empty invoice table", () => {
+  // Headers over nothing, under a quote awaiting approval, reads as a page
+  // that failed to load.
+  const html = portalPage({
+    businessName: "Northfield Joinery",
+    customerName: "Marguerite",
+    invoices: [],
+    quotes: [quote()],
+    quotePath: "/portal/tok/quotes",
+    now,
+  });
+  expect(html).toContain("QUO-2001");
+  expect(html).not.toContain("<th>Invoice</th>");
+  expect(html).not.toContain("Nothing outstanding");
+});
+
+test("a customer with nothing at all is told so", () => {
+  const html = portalPage({
+    businessName: "Northfield Joinery",
+    customerName: "Marguerite",
+    invoices: [],
+    quotes: [],
+    now,
+  });
+  expect(html).toContain("Nothing outstanding");
+});
