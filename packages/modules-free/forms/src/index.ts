@@ -15,6 +15,7 @@ import {
   originAllowed,
   rateLimit,
 } from "@sentrello/module-sdk";
+import { problemPage, thanksPage, wantsHtml } from "./reply";
 
 /** Per-form limit for public submissions. Generous for humans, hostile to bots. */
 const SUBMIT_LIMIT = 5;
@@ -170,7 +171,14 @@ export default defineModule({
       // One 404 for "no such form", "inactive" and "origin not allowed": a
       // public endpoint should not help someone map which keys are real.
       if (!form || !form.active || !decision.allowed) {
-        return c.json({ error: "not found" }, 404);
+        return wantsHtml(c)
+          ? c.html(
+              problemPage(
+                "This form is no longer accepting messages. Try contacting the business another way.",
+              ),
+              404,
+            )
+          : c.json({ error: "not found" }, 404);
       }
 
       const limited = rateLimit(
@@ -179,10 +187,19 @@ export default defineModule({
         SUBMIT_WINDOW_MS,
       );
       if (!limited.allowed) {
-        return c.json({ error: "too_many_requests" }, 429, {
-          ...corsHeaders(decision.echo),
-          "retry-after": String(limited.retryAfterSeconds),
-        });
+        const retry = { "retry-after": String(limited.retryAfterSeconds) };
+        return wantsHtml(c)
+          ? c.html(
+              problemPage(
+                "That is a lot of messages in a short time. Wait a minute and try again.",
+              ),
+              429,
+              retry,
+            )
+          : c.json({ error: "too_many_requests" }, 429, {
+              ...corsHeaders(decision.echo),
+              ...retry,
+            });
       }
 
       const payload = await readSubmission(c.req.raw);
@@ -190,17 +207,29 @@ export default defineModule({
       // Silent success for the honeypot: telling a bot it was detected only
       // teaches it to stop filling the trap.
       if (looksAutomated(payload)) {
-        return c.json({ ok: true }, 202, corsHeaders(decision.echo));
+        // The same reply a person gets, so a bot learns nothing from it.
+        return wantsHtml(c)
+          ? c.html(
+              thanksPage(form.name, await businessName(form.organizationId)),
+            )
+          : c.json({ ok: true }, 202, corsHeaders(decision.echo));
       }
 
       const email = (payload.email ?? "").trim().toLowerCase();
       const name = (payload.name ?? "").trim();
       if (!name && !email) {
-        return c.json(
-          { error: "name or email is required" },
-          400,
-          corsHeaders(decision.echo),
-        );
+        return wantsHtml(c)
+          ? c.html(
+              problemPage(
+                "Add your name or an email address so the business can reply, then send it again.",
+              ),
+              400,
+            )
+          : c.json(
+              { error: "name or email is required" },
+              400,
+              corsHeaders(decision.echo),
+            );
       }
 
       const orgId = form.organizationId;
@@ -233,6 +262,21 @@ export default defineModule({
         body: `${form.name}: ${summarise(payload)}`,
       });
 
+      /**
+       * A browser is sent somewhere; a script is told what happened.
+       *
+       * 303 rather than 302 so the visitor's browser follows with GET and a
+       * refresh cannot post the message a second time.
+       */
+      if (wantsHtml(c)) {
+        return form.redirectUrl
+          ? c.redirect(form.redirectUrl, 303)
+          : c.html(
+              thanksPage(form.name, await businessName(form.organizationId)),
+              201,
+            );
+      }
+
       return c.json(
         {
           ok: true,
@@ -245,6 +289,16 @@ export default defineModule({
     });
   },
 });
+
+/** The name on the thank-you page is the business's own, not Sentrello's. */
+async function businessName(orgId: string): Promise<string> {
+  const [org] = await db
+    .select({ name: schema.organizations.name })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, orgId))
+    .limit(1);
+  return org?.name ?? "the business";
+}
 
 async function formByKey(key: string) {
   const [form] = await db

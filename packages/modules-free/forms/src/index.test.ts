@@ -316,3 +316,109 @@ test("submissions are visible to the owner, scoped to their organization", async
   const body = (await res.json()) as { submissions: unknown[] };
   expect(body.submissions.length).toBeGreaterThan(0);
 });
+
+/**
+ * The snippet this module hands a business is deliberately plain HTML that
+ * needs no JavaScript, so most people who use it submit by ordinary form
+ * navigation. They used to land on raw JSON — and a business that had set a
+ * redirect got it back as a field in that JSON rather than as a redirect, so
+ * the setting did nothing for exactly the visitors the snippet was built for.
+ */
+function submitFromBrowser(
+  key: string,
+  fields: Record<string, string>,
+  origin = "https://acme.com",
+) {
+  resetRateLimits();
+  return app.request(`http://localhost/api/embed/forms/${key}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "text/html,application/xhtml+xml,*/*;q=0.8",
+      origin,
+    },
+    body: new URLSearchParams(fields),
+    redirect: "manual",
+  });
+}
+
+test("a browser posting the snippet gets a page, not JSON", async () => {
+  const res = await submitFromBrowser(contactFormKey, {
+    name: "Ines Bergstrom",
+    email: "ines@buyer.example",
+    message: "Burst pipe under the sink",
+  });
+
+  expect(res.status).toBe(201);
+  expect(res.headers.get("content-type")).toContain("text/html");
+
+  const page = await res.text();
+  expect(page).toContain("Thanks");
+  expect(page).not.toContain('{"ok"');
+  // The business's own name, not the product's.
+  expect(page).toContain(`Forms ${suffix}`);
+});
+
+test("a script posting the same form still gets JSON", async () => {
+  const res = await submit(contactFormKey, {
+    name: "Script Caller",
+    email: "api@buyer.example",
+  });
+  expect(res.headers.get("content-type")).toContain("application/json");
+  expect((await res.json()) as { ok: boolean }).toMatchObject({ ok: true });
+});
+
+test("a configured redirect actually redirects the visitor", async () => {
+  const [form] = await db
+    .select({ id: schema.forms.id })
+    .from(schema.forms)
+    .where(eq(schema.forms.key, contactFormKey));
+  if (!form) throw new Error("expected the contact form");
+
+  await db
+    .update(schema.forms)
+    .set({ redirectUrl: "https://acme.com/thanks" })
+    .where(eq(schema.forms.id, form.id));
+
+  const res = await submitFromBrowser(contactFormKey, {
+    name: "Redirected Sender",
+    email: "redirected@buyer.example",
+  });
+
+  // 303, so a refresh on the destination cannot post the message twice.
+  expect(res.status).toBe(303);
+  expect(res.headers.get("location")).toBe("https://acme.com/thanks");
+
+  await db
+    .update(schema.forms)
+    .set({ redirectUrl: null })
+    .where(eq(schema.forms.id, form.id));
+});
+
+test("a browser told what to fix, rather than shown a status code", async () => {
+  const res = await submitFromBrowser(contactFormKey, { message: "hello" });
+  expect(res.status).toBe(400);
+  expect(res.headers.get("content-type")).toContain("text/html");
+  expect(await res.text()).toContain("name or an email address");
+});
+
+test("a bot filling the honeypot sees what a person sees", async () => {
+  const before = await db
+    .select()
+    .from(schema.formSubmissions)
+    .where(eq(schema.formSubmissions.organizationId, orgId));
+
+  const res = await submitFromBrowser(contactFormKey, {
+    name: "Cheap Meds",
+    email: "spam@buyer.example",
+    [HONEYPOT_FIELD]: "http://spam.example",
+  });
+  expect(res.status).toBe(200);
+  expect(await res.text()).toContain("Thanks");
+
+  const after = await db
+    .select()
+    .from(schema.formSubmissions)
+    .where(eq(schema.formSubmissions.organizationId, orgId));
+  expect(after).toHaveLength(before.length);
+});
