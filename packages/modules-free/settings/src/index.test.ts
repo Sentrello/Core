@@ -158,3 +158,63 @@ test("settings are not readable without a session", async () => {
   const res = await app.request("http://localhost/api/settings");
   expect(res.status).toBe(401);
 });
+
+/**
+ * The business identity that appears on every document a customer receives.
+ *
+ * A name alone is not a valid invoice in the UK or the EU, and a business paid
+ * by transfer whose invoices omit its bank details answers "where do I send
+ * this?" on every one. These are stored so the portal footer can carry them.
+ */
+test("the business can record its address, tax number and payment details", async () => {
+  const res = await app.request("http://localhost/api/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      name: "Wierzbicki Tiling",
+      address: "Unit 4, Tanners Yard\nLeeds LS9 8AB",
+      taxIdLabel: "VAT number",
+      taxId: "GB 412 7749 02",
+      paymentInstructions: "Bank transfer to 20-45-11, account 8842 3901.",
+    }),
+  });
+  expect(res.status).toBe(200);
+
+  const read = await app.request("http://localhost/api/settings", { headers });
+  const body = (await read.json()) as {
+    business: {
+      address: string;
+      taxId: string;
+      taxIdLabel: string;
+      paymentInstructions: string;
+    };
+  };
+  expect(body.business.address).toContain("Tanners Yard");
+  expect(body.business.taxId).toBe("GB 412 7749 02");
+  expect(body.business.taxIdLabel).toBe("VAT number");
+  expect(body.business.paymentInstructions).toContain("20-45-11");
+});
+
+test("blanking a field clears it rather than storing an empty string", async () => {
+  await app.request("http://localhost/api/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ name: "Wierzbicki Tiling", address: "   " }),
+  });
+  const read = await app.request("http://localhost/api/settings", { headers });
+  const body = (await read.json()) as { business: { address: string } };
+  expect(body.business.address).toBe("");
+});
+
+test("an address longer than a document is refused", async () => {
+  const res = await app.request("http://localhost/api/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      name: "Wierzbicki Tiling",
+      address: "x".repeat(501),
+    }),
+  });
+  expect(res.status).toBe(400);
+  expect(((await res.json()) as { error: string }).error).toContain("address");
+});

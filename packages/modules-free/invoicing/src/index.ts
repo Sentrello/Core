@@ -653,7 +653,9 @@ export default defineModule({
         .where(eq(schema.payments.organizationId, contact.organizationId));
 
       const [org] = await db
-        .select({ name: schema.organizations.name })
+        // The whole row: the portal footer needs the address, tax number and
+        // payment instructions, not only the name.
+        .select()
         .from(schema.organizations)
         .where(eq(schema.organizations.id, contact.organizationId))
         .limit(1);
@@ -671,6 +673,15 @@ export default defineModule({
       return c.html(
         portalPage({
           businessName: org?.name ?? "Invoices",
+          // On a Free instance with no card payments this footer is the only
+          // thing telling the customer where to send the money.
+          business: {
+            name: org?.name ?? "Invoices",
+            address: org?.address,
+            taxId: org?.taxId,
+            taxIdLabel: org?.taxIdLabel,
+            paymentInstructions: org?.paymentInstructions,
+          },
           customerName: contact.name,
           quotes,
           quotePath: `/portal/${supplied}/quotes`,

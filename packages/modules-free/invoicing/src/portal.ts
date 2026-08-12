@@ -55,6 +55,9 @@ td { border-bottom:1px solid var(--line); padding:.7rem 0; }
 .paid { color:#1f7a4d; } .due { color:#a16207; } .over { color:#b91c1c; }
 .muted { color:var(--muted); font-size:.875rem; }
 h2.section { font-size:1.05rem; margin:0 0 .75rem; }
+footer.seller { margin-top:2.5rem; padding-top:1.25rem; border-top:1px solid var(--line);
+  display:flex; flex-wrap:wrap; gap:2rem; color:var(--muted); font-size:.8125rem; line-height:1.5; }
+footer.seller .howto { max-width:22rem; }
 button.pay { font:inherit; font-weight:600; padding:.4rem .9rem; border:0;
   border-radius:.375rem; background:#2f8f8a; color:#fff; cursor:pointer; }
 form { margin:0; }
@@ -121,8 +124,59 @@ function label(invoice: PortalInvoice, now = new Date()): string {
   return invoice.status === "partial" ? "part paid" : "due";
 }
 
+/** Who the business is, as it must appear on a document a customer files. */
+export interface BusinessIdentity {
+  name: string;
+  address?: string | null;
+  taxId?: string | null;
+  taxIdLabel?: string | null;
+  paymentInstructions?: string | null;
+}
+
+/**
+ * The seller's details, at the foot of the page.
+ *
+ * A name alone is not an invoice: in the UK and across the EU the seller's
+ * address is required, and a VAT invoice must carry the registration number.
+ * Payment instructions are the practical half — a business paid by transfer
+ * whose invoices omit its account details answers "where do I send this?" on
+ * every one of them.
+ */
+function businessFooter(b: BusinessIdentity): string {
+  const lines: string[] = [];
+  if (b.address) {
+    lines.push(
+      `<div>${b.address
+        .split("\n")
+        .map((l) => html(l.trim()))
+        .filter(Boolean)
+        .join("<br>")}</div>`,
+    );
+  }
+  if (b.taxId) {
+    lines.push(
+      `<div>${html(b.taxIdLabel?.trim() || "Tax number")}: ${html(b.taxId)}</div>`,
+    );
+  }
+  if (lines.length === 0 && !b.paymentInstructions) return "";
+
+  const pay = b.paymentInstructions
+    ? `<div class="howto"><strong>How to pay</strong><br>${b.paymentInstructions
+        .split("\n")
+        .map((l) => html(l.trim()))
+        .filter(Boolean)
+        .join("<br>")}</div>`
+    : "";
+
+  return `<footer class="seller"><div><strong>${html(b.name)}</strong>${
+    lines.length ? `<br>${lines.join("")}` : ""
+  }</div>${pay}</footer>`;
+}
+
 export function portalPage(args: {
   businessName: string;
+  /** the seller's own details, for the foot of the page */
+  business?: BusinessIdentity;
   customerName: string;
   invoices: PortalInvoice[];
   /** quotes waiting on this customer's answer */
@@ -135,6 +189,7 @@ export function portalPage(args: {
 }): string {
   const {
     businessName,
+    business,
     customerName,
     invoices,
     quotes = [],
@@ -200,5 +255,6 @@ ${owed > 0 ? `<p class="owed">${html(money(owed, currency))} outstanding</p>` : 
 }
 <p class="muted" style="margin-top:2rem">This page is private to you. Anyone
 with the link can see it, so treat it like a bill in the post.</p>
+${businessFooter(business ?? { name: businessName })}
 </main></body></html>`;
 }

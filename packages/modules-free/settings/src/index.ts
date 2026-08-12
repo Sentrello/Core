@@ -49,7 +49,14 @@ export default defineModule({
           process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
 
         return c.json({
-          business: { name: org?.name ?? "", slug: org?.slug ?? "" },
+          business: {
+            name: org?.name ?? "",
+            slug: org?.slug ?? "",
+            address: org?.address ?? "",
+            taxId: org?.taxId ?? "",
+            taxIdLabel: org?.taxIdLabel ?? "",
+            paymentInstructions: org?.paymentInstructions ?? "",
+          },
           instance: {
             baseUrl: base,
             // Whether the address the instance thinks it has matches the one
@@ -99,12 +106,49 @@ export default defineModule({
           return c.json({ error: "that name is too long" }, 400);
         }
 
+        // These reach customers on every invoice, so they are bounded rather
+        // than trusted: an address is a few lines, not a document.
+        const text = (value: unknown, limit: number, field: string) => {
+          const trimmed = String(value ?? "").trim();
+          if (trimmed.length > limit) throw new RangeError(field);
+          return trimmed || null;
+        };
+
+        let address: string | null;
+        let taxId: string | null;
+        let taxIdLabel: string | null;
+        let paymentInstructions: string | null;
+        try {
+          address = text(body.address, 500, "address");
+          taxId = text(body.taxId, 60, "tax number");
+          taxIdLabel = text(body.taxIdLabel, 40, "tax number label");
+          paymentInstructions = text(
+            body.paymentInstructions,
+            800,
+            "payment instructions",
+          );
+        } catch (err) {
+          if (err instanceof RangeError) {
+            return c.json({ error: `that ${err.message} is too long` }, 400);
+          }
+          throw err;
+        }
+
         const [org] = await db
           .update(schema.organizations)
-          .set({ name })
+          .set({ name, address, taxId, taxIdLabel, paymentInstructions })
           .where(eq(schema.organizations.id, orgId))
           .returning();
-        return c.json({ business: { name: org?.name, slug: org?.slug } });
+        return c.json({
+          business: {
+            name: org?.name,
+            slug: org?.slug,
+            address: org?.address ?? "",
+            taxId: org?.taxId ?? "",
+            taxIdLabel: org?.taxIdLabel ?? "",
+            paymentInstructions: org?.paymentInstructions ?? "",
+          },
+        });
       },
     );
   },

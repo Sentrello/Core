@@ -183,3 +183,85 @@ test("a customer with nothing at all is told so", () => {
   });
   expect(html).toContain("Nothing outstanding");
 });
+
+/**
+ * The seller's own details, on the document the customer keeps.
+ *
+ * A name alone is not an invoice. In the UK and across the EU the seller's
+ * address is required and a VAT invoice must carry the registration number —
+ * without them the customer files something that is not a valid document. And
+ * a business paid by bank transfer whose invoices omit its account details
+ * answers "where do I send this?" on every single one.
+ */
+const seller = {
+  name: "Wierzbicki Tiling",
+  address: "Unit 4, Tanners Yard\nLeeds LS9 8AB",
+  taxId: "GB 412 7749 02",
+  taxIdLabel: "VAT number",
+  paymentInstructions:
+    "Bank transfer to 20-45-11, account 8842 3901.\nPlease quote the invoice number.",
+};
+
+test("the customer's page carries the address, tax number and how to pay", () => {
+  const html = portalPage({
+    businessName: seller.name,
+    business: seller,
+    customerName: "Whitfield Restaurant",
+    invoices: [],
+  });
+
+  expect(html).toContain("Unit 4, Tanners Yard");
+  expect(html).toContain("Leeds LS9 8AB");
+  // The business names its own tax number: it is not "VAT" everywhere.
+  expect(html).toContain("VAT number: GB 412 7749 02");
+  expect(html).toContain("How to pay");
+  expect(html).toContain("20-45-11");
+  // Newlines in a textarea must survive as line breaks, not run together.
+  expect(html).toContain("Tanners Yard<br>Leeds LS9 8AB");
+});
+
+test("a business that has filled nothing in gets no empty footer", () => {
+  const html = portalPage({
+    businessName: "Nothing Filled In Ltd",
+    business: { name: "Nothing Filled In Ltd" },
+    customerName: "A Customer",
+    invoices: [],
+  });
+  // The stylesheet always mentions the class; what must be absent is the
+  // element itself, and an empty bordered block under the page.
+  expect(html).not.toContain("<footer");
+  expect(html).not.toContain("How to pay");
+});
+
+test("payment instructions alone are enough to show the footer", () => {
+  // The common case for a sole trader who is not registered for tax.
+  const html = portalPage({
+    businessName: "Sole Trader",
+    business: { name: "Sole Trader", paymentInstructions: "Cash or transfer" },
+    customerName: "A Customer",
+    invoices: [],
+  });
+  expect(html).toContain("How to pay");
+  expect(html).toContain("Cash or transfer");
+  expect(html).not.toContain("Tax number:");
+});
+
+test("the seller's details cannot inject markup", () => {
+  const html = portalPage({
+    businessName: "X",
+    business: {
+      name: "X",
+      address: "<script>alert(1)</script>",
+      paymentInstructions: "<img src=x onerror=alert(1)>",
+    },
+    customerName: "A Customer",
+    invoices: [],
+  });
+  // Escaped, not stripped: the text still reads back, but no tag survives to
+  // be parsed. "onerror=" appears inside the escaped text and is inert there,
+  // so the assertion is about the angle brackets.
+  expect(html).not.toContain("<script>");
+  expect(html).not.toContain("<img");
+  expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+});

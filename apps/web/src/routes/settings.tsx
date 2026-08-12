@@ -25,7 +25,14 @@ interface LicenseResponse {
 }
 
 interface SettingsResponse {
-  business: { name: string; slug: string };
+  business: {
+    name: string;
+    slug: string;
+    address: string;
+    taxId: string;
+    taxIdLabel: string;
+    paymentInstructions: string;
+  };
   instance: { baseUrl: string; baseUrlMatchesRequest: boolean };
   email: { configured: boolean; from: string | null };
   payments: {
@@ -79,6 +86,9 @@ function Copyable({ label, value }: { label: string; value: string }) {
 export function Settings() {
   const qc = useQueryClient();
   const [name, setName] = useState<string | null>(null);
+  // Held together, because they are saved together: partial identity on an
+  // invoice is worse than none, since it looks deliberate.
+  const [details, setDetails] = useState<Record<string, string> | null>(null);
 
   const settings = useQuery({
     queryKey: ["settings"],
@@ -91,13 +101,11 @@ export function Settings() {
   });
 
   const rename = useMutation({
-    mutationFn: (value: string) =>
-      api("/api/settings", {
-        method: "PUT",
-        body: JSON.stringify({ name: value }),
-      }),
+    mutationFn: (body: Record<string, string>) =>
+      api("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
     onSuccess: () => {
       setName(null);
+      setDetails(null);
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
   });
@@ -107,13 +115,28 @@ export function Settings() {
   const data = settings.data;
   if (!data) return null;
 
+  const saved = {
+    address: data.business.address,
+    taxId: data.business.taxId,
+    taxIdLabel: data.business.taxIdLabel,
+    paymentInstructions: data.business.paymentInstructions,
+  };
+  const form = details ?? saved;
+  const patch = (change: Record<string, string>) =>
+    setDetails({ ...form, ...change });
+  const dirty =
+    (name !== null && name !== data.business.name) ||
+    (Object.keys(saved) as (keyof typeof saved)[]).some(
+      (k) => form[k] !== saved[k],
+    );
+
   const { stripe, paypal } = data.payments;
 
   return (
     <div className="max-w-3xl space-y-4">
       <Card>
         <p className="mb-3 font-medium">Your business</p>
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-3">
           <Field
             label="Name"
             hint="Appears on invoices, the customer portal and your storefront."
@@ -123,16 +146,75 @@ export function Settings() {
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
-          <div className="flex items-end">
-            <Button
-              onClick={() => name && rename.mutate(name)}
-              disabled={
-                rename.isPending || !name || name === data.business.name
-              }
+
+          {/*
+            An invoice with only a name is not a valid document in the UK or
+            the EU, and a business paid by transfer whose invoices omit its
+            account details answers "where do I send this?" on every one.
+          */}
+          <Field
+            label="Address"
+            hint="Required on invoices in the UK and EU. Appears at the foot of every one."
+          >
+            <textarea
+              rows={3}
+              value={form.address}
+              onChange={(e) => patch({ address: e.target.value })}
+              className="w-full rounded border px-2 py-1.5 text-sm"
+              style={{
+                background: "var(--surface-raised)",
+                borderColor: "var(--border)",
+                color: "var(--text)",
+              }}
+            />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+            <Field label="Tax number label" hint="e.g. VAT number, ABN, EIN.">
+              <Input
+                value={form.taxIdLabel}
+                placeholder="VAT number"
+                onChange={(e) => patch({ taxIdLabel: e.target.value })}
+              />
+            </Field>
+            <Field
+              label="Tax number"
+              hint="Leave blank if you are not registered."
             >
-              {rename.isPending ? "Saving…" : "Save"}
-            </Button>
+              <Input
+                value={form.taxId}
+                onChange={(e) => patch({ taxId: e.target.value })}
+              />
+            </Field>
           </div>
+
+          <Field
+            label="How to pay"
+            hint="Bank details or instructions, shown on the customer's page."
+          >
+            <textarea
+              rows={3}
+              value={form.paymentInstructions}
+              onChange={(e) => patch({ paymentInstructions: e.target.value })}
+              className="w-full rounded border px-2 py-1.5 text-sm"
+              style={{
+                background: "var(--surface-raised)",
+                borderColor: "var(--border)",
+                color: "var(--text)",
+              }}
+            />
+          </Field>
+
+          <Button
+            onClick={() =>
+              rename.mutate({ name: name ?? data.business.name, ...form })
+            }
+            disabled={
+              rename.isPending || !(name ?? data.business.name) || !dirty
+            }
+          >
+            {rename.isPending ? "Saving…" : "Save"}
+          </Button>
         </div>
         {rename.error ? <ErrorNote error={rename.error} /> : null}
       </Card>

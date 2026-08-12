@@ -90,6 +90,26 @@ export const organizations = pgTable(
     logo: text("logo"),
     createdAt: timestamp("created_at").notNull(),
     metadata: text("metadata"),
+
+    /**
+     * Who the business is, on every document a customer receives.
+     *
+     * A name alone is not an invoice. In the UK and across the EU an invoice
+     * must carry the seller's address, and a VAT invoice must carry the
+     * registration number — without them the document a customer files is not
+     * a valid one. Payment instructions are the practical half: a business
+     * paid by bank transfer whose invoices omit its account details fields a
+     * "where do I send this?" reply to every single one.
+     *
+     * Free text rather than structured fields, because the shape of an address
+     * and the name of a tax number differ by country, and a micro-business
+     * knows its own better than a form does.
+     */
+    address: text("address"),
+    taxId: text("tax_id"),
+    /** Labelled by the business, e.g. "VAT number", "ABN", "EIN". */
+    taxIdLabel: text("tax_id_label"),
+    paymentInstructions: text("payment_instructions"),
   },
   (table) => [uniqueIndex("organizations_slug_uidx").on(table.slug)],
 );
