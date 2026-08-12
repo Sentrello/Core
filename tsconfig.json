@@ -39,6 +39,9 @@
     },
     {
       "path": "./scripts"
+    },
+    {
+      "path": "./packages/modules-free/settings"
     }
   ]
 }

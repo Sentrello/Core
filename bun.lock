@@ -24,6 +24,7 @@
         "@sentrello/module-forms": "*",
         "@sentrello/module-invoicing": "*",
         "@sentrello/module-sdk": "*",
+        "@sentrello/module-settings": "*",
         "hono": "^4.6.0",
       },
       "devDependencies": {
@@ -148,6 +149,17 @@
         "@sentrello/auth": "*",
         "@sentrello/db": "*",
         "@sentrello/email": "*",
+        "@sentrello/module-sdk": "*",
+        "drizzle-orm": "^0.45.0",
+        "hono": "^4.6.0",
+      },
+    },
+    "packages/modules-free/settings": {
+      "name": "@sentrello/module-settings",
+      "version": "0.0.0",
+      "dependencies": {
+        "@sentrello/auth": "*",
+        "@sentrello/db": "*",
         "@sentrello/module-sdk": "*",
         "drizzle-orm": "^0.45.0",
         "hono": "^4.6.0",
@@ -378,6 +390,8 @@
     "@sentrello/module-invoicing": ["@sentrello/module-invoicing@workspace:packages/modules-free/invoicing"],
 
     "@sentrello/module-sdk": ["@sentrello/module-sdk@workspace:packages/module-sdk"],
+
+    "@sentrello/module-settings": ["@sentrello/module-settings@workspace:packages/modules-free/settings"],
 
     "@sentrello/server": ["@sentrello/server@workspace:apps/server"],
 

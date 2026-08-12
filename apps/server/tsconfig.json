@@ -32,6 +32,9 @@
     },
     {
       "path": "../../packages/modules-free/forms"
+    },
+    {
+      "path": "../../packages/modules-free/settings"
     }
   ]
 }

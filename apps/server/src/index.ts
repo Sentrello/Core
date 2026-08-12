@@ -7,6 +7,7 @@ import crm from "@sentrello/module-crm";
 import forms from "@sentrello/module-forms";
 import invoicing from "@sentrello/module-invoicing";
 import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
+import settings from "@sentrello/module-settings";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
@@ -27,6 +28,7 @@ const modules: SentrelloModule[] = [
   forms,
   invoicing,
   bookkeeping,
+  settings,
   ...(await discoverOptionalModules()),
 ];
 const { nav, loaded, jobs } = loadModules(app, gate, modules);

@@ -7,6 +7,7 @@ import { Contacts } from "./routes/contacts";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
+import { Settings } from "./routes/settings";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
 
@@ -17,11 +18,12 @@ import { SignIn } from "./routes/sign-in";
  * not load has no nav entry and no way in. A module whose screens ship
  * elsewhere simply has no entry here yet.
  */
-const SCREENS: Record<string, () => React.ReactElement> = {
+const SCREENS: Record<string, () => React.ReactElement | null> = {
   crm: Contacts,
   invoicing: Invoices,
   bookkeeping: Bookkeeping,
   forms: Forms,
+  settings: Settings,
 };
 
 function useMeta() {
