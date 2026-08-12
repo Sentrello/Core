@@ -719,6 +719,61 @@ export default defineModule({
      * portal link, because an invoice someone has to reply to in order to pay
      * is an invoice that waits.
      */
+    /**
+     * One invoice, with everything a person needs to answer "where is this?":
+     * what was charged, what has been paid, and what is left.
+     *
+     * The balance is computed from the payments rather than stored, so a row
+     * that was hand-edited in the database cannot disagree with itself.
+     */
+    ctx.app.get(
+      "/api/invoices/:id",
+      requireSession(),
+      requirePermission({ invoicing: ["read"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const [invoice] = await db
+          .select()
+          .from(schema.invoices)
+          .where(
+            and(
+              eq(schema.invoices.id, c.req.param("id")),
+              eq(schema.invoices.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!invoice) return c.json({ error: "not found" }, 404);
+
+        const [lines, payments] = await Promise.all([
+          db
+            .select()
+            .from(schema.invoiceLines)
+            .where(eq(schema.invoiceLines.invoiceId, invoice.id)),
+          db
+            .select()
+            .from(schema.payments)
+            .where(eq(schema.payments.invoiceId, invoice.id)),
+        ]);
+
+        const paidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+        const { balanceDue, status } = invoiceStatus(
+          invoice.totalCents,
+          paidCents,
+        );
+
+        return c.json({
+          invoice,
+          lines,
+          payments,
+          paidCents,
+          balanceDue,
+          // What the status would be from the payments alone, so a stale
+          // stored status is visible rather than believed.
+          computedStatus: status,
+        });
+      },
+    );
+
     ctx.app.post(
       "/api/invoices/:id/send",
       requireSession(),

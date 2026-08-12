@@ -380,6 +380,85 @@ const ledgerFor = async (source: string) => {
     .where(eq(schema.journalLines.entryId, entry.id));
 };
 
+test("one invoice comes back with its lines, payments and true balance", async () => {
+  const created = await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "Fitting",
+          quantity: 2,
+          unitPrice: 5000,
+          taxRateBp: 875,
+        },
+        {
+          description: "Materials",
+          quantity: 1,
+          unitPrice: 2500,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+  const { invoice } = (await created.json()) as { invoice: { id: string } };
+
+  await app.request(`http://localhost/api/invoices/${invoice.id}/payments`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ amountCents: 5000, method: "bank" }),
+  });
+
+  const res = await app.request(`http://localhost/api/invoices/${invoice.id}`, {
+    headers,
+  });
+  expect(res.status).toBe(200);
+  const detail = (await res.json()) as {
+    lines: unknown[];
+    payments: unknown[];
+    paidCents: number;
+    balanceDue: number;
+    computedStatus: string;
+    invoice: { totalCents: number };
+  };
+
+  expect(detail.lines).toHaveLength(2);
+  expect(detail.payments).toHaveLength(1);
+  expect(detail.paidCents).toBe(5000);
+  // 2×50.00 at 8.75% = 108.75, plus 25.00 = 133.75, less 50.00 paid
+  expect(detail.invoice.totalCents).toBe(13375);
+  expect(detail.balanceDue).toBe(8375);
+  expect(detail.computedStatus).toBe("partial");
+});
+
+test("another organization's invoice is a 404, not a detail page", async () => {
+  const [foreign] = await db
+    .insert(schema.invoices)
+    .values({
+      organizationId: `org_other_${suffix}`,
+      number: `INV-PRIVATE-${suffix}`,
+      status: "open",
+      currency: "USD",
+      subtotalCents: 5000,
+      taxCents: 0,
+      totalCents: 5000,
+    })
+    .returning();
+
+  const res = await app.request(
+    `http://localhost/api/invoices/${foreign?.id}`,
+    {
+      headers,
+    },
+  );
+  expect(res.status).toBe(404);
+  await db
+    .delete(schema.invoices)
+    .where(eq(schema.invoices.id, foreign?.id ?? ""));
+});
+
 test("sending an invoice records it on the timeline and links the portal", async () => {
   // The template existed and nothing called it: a business could raise an
   // invoice and had no way to deliver it.

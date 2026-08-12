@@ -26,10 +26,31 @@ const emptyLine = (): Line => ({
   taxRateBp: 0,
 });
 
+interface InvoiceDetail {
+  invoice: Invoice;
+  lines: {
+    id: string;
+    description: string;
+    quantity: number;
+    unitPriceCents: number;
+    taxRateBp: number;
+  }[];
+  payments: {
+    id: string;
+    amountCents: number;
+    method: string;
+    receivedAt: string;
+  }[];
+  paidCents: number;
+  balanceDue: number;
+  computedStatus: string;
+}
+
 export function Invoices() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState<Invoice | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
 
   const invoices = useQuery({
     queryKey: ["invoices"],
@@ -98,7 +119,18 @@ export function Invoices() {
         >
           {rows.map((inv) => (
             <Row key={inv.id}>
-              <td className="py-2 font-medium">{inv.number}</td>
+              <td className="py-2 font-medium">
+                <button
+                  type="button"
+                  className="underline-offset-2 hover:underline"
+                  onClick={() =>
+                    setOpened((v) => (v === inv.id ? null : inv.id))
+                  }
+                  title="Show the detail"
+                >
+                  {inv.number}
+                </button>
+              </td>
               <td>{nameFor(inv.contactId)}</td>
               <td>{formatDate(inv.dueDate)}</td>
               <td>
@@ -121,7 +153,114 @@ export function Invoices() {
           ))}
         </Table>
       )}
+
+      {opened ? <Detail id={opened} onClose={() => setOpened(null)} /> : null}
     </div>
+  );
+}
+
+/**
+ * What was charged and what has been paid.
+ *
+ * The balance comes from the payments rather than the invoice's stored status,
+ * so a row that disagrees with its own payments shows the disagreement instead
+ * of hiding it — that difference is the first thing anyone chasing money wants
+ * to see.
+ */
+function Detail({ id, onClose }: { id: string; onClose: () => void }) {
+  const detail = useQuery({
+    queryKey: ["invoice", id],
+    queryFn: () => api<InvoiceDetail>(`/api/invoices/${id}`),
+  });
+
+  if (detail.isLoading) return <Loading />;
+  if (detail.error) return <ErrorNote error={detail.error} />;
+  const d = detail.data;
+  if (!d) return null;
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-medium">
+          {d.invoice.number}{" "}
+          <span style={muted}>· due {formatDate(d.invoice.dueDate)}</span>
+        </p>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+
+      <Table
+        headers={[
+          "Description",
+          "Qty",
+          { label: "Unit", money: true },
+          "Tax",
+          { label: "Line", money: true },
+        ]}
+      >
+        {d.lines.map((l) => (
+          <Row key={l.id}>
+            <td className="py-2">{l.description}</td>
+            <td>{l.quantity}</td>
+            <td className="money">{formatMoney(l.unitPriceCents)}</td>
+            <td style={muted}>{l.taxRateBp ? `${l.taxRateBp / 100}%` : "—"}</td>
+            <td className="money">
+              {formatMoney(l.quantity * l.unitPriceCents)}
+            </td>
+          </Row>
+        ))}
+      </Table>
+
+      <dl className="mt-3 text-sm">
+        <div className="flex justify-end gap-4">
+          <dt style={muted}>Subtotal</dt>
+          <dd className="money w-28">{formatMoney(d.invoice.subtotalCents)}</dd>
+        </div>
+        <div className="flex justify-end gap-4">
+          <dt style={muted}>Tax</dt>
+          <dd className="money w-28">{formatMoney(d.invoice.taxCents)}</dd>
+        </div>
+        <div className="flex justify-end gap-4 font-semibold">
+          <dt>Total</dt>
+          <dd className="money w-28">{formatMoney(d.invoice.totalCents)}</dd>
+        </div>
+        <div className="flex justify-end gap-4">
+          <dt style={muted}>Paid</dt>
+          <dd className="money w-28">{formatMoney(d.paidCents)}</dd>
+        </div>
+        <div className="flex justify-end gap-4 font-semibold">
+          <dt>Outstanding</dt>
+          <dd className="money w-28">{formatMoney(d.balanceDue)}</dd>
+        </div>
+      </dl>
+
+      {d.computedStatus !== d.invoice.status ? (
+        // Stored status and payments disagreeing is worth surfacing rather
+        // than quietly trusting one of them.
+        <p className="mt-2 text-sm" style={{ color: "var(--color-warning)" }}>
+          This invoice is marked {d.invoice.status} but its payments add up to{" "}
+          {d.computedStatus}.
+        </p>
+      ) : null}
+
+      <p className="mt-4 mb-1 text-sm font-medium">Payments</p>
+      {d.payments.length === 0 ? (
+        <p className="text-sm" style={muted}>
+          Nothing received yet.
+        </p>
+      ) : (
+        <Table headers={["When", "Method", { label: "Amount", money: true }]}>
+          {d.payments.map((p) => (
+            <Row key={p.id}>
+              <td className="py-2">{formatDate(p.receivedAt)}</td>
+              <td style={muted}>{p.method}</td>
+              <td className="money">{formatMoney(p.amountCents)}</td>
+            </Row>
+          ))}
+        </Table>
+      )}
+    </Card>
   );
 }
 
