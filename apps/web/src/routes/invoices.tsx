@@ -301,7 +301,12 @@ function NewInvoice({
   onDone: () => void;
 }) {
   const [contactId, setContactId] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  // Prefilled, not blank: the server defaults an omitted due date to thirty
+  // days anyway, and a business should see the terms it is offering rather
+  // than have them applied silently.
+  const [dueDate, setDueDate] = useState(() =>
+    new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
+  );
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const t = totals(lines);
 

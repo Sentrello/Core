@@ -60,6 +60,11 @@ export async function runRecurringInvoices(now = new Date()) {
           contactId: profile.contactId,
           number: await nextDocumentNumber(tx, orgId, "invoice"),
           status: "open",
+          // Recurring invoices had no due date, so overdue chasing — which
+          // skips invoices without one — never saw them. These are the least
+          // watched invoices a business has, which makes that the worst place
+          // for them to go unasked-for. Thirty days, as elsewhere.
+          dueDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
           subtotalCents: t.subtotal,
           taxCents: t.tax,
           totalCents: t.total,

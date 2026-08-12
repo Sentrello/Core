@@ -179,7 +179,10 @@ export default defineModule({
               organizationId: orgId,
               contactId,
               currency,
-              dueDate: dueDate ? new Date(dueDate) : null,
+              // Defaulted rather than left null: overdue chasing skips an
+              // invoice with no due date, so one created without a date is
+              // money the business is never reminded to ask for.
+              dueDate: dueDate ? new Date(dueDate) : defaultDueDate(),
               number: await nextDocumentNumber(tx, orgId, "invoice"),
               status: "open",
               subtotalCents: t.subtotal,

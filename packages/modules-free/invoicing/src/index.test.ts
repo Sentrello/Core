@@ -838,3 +838,66 @@ test("a rejected invoice leaves nothing behind", async () => {
     .where(eq(schema.invoices.organizationId, orgId));
   expect(after).toHaveLength(before.length);
 });
+
+/**
+ * An invoice with no due date is invisible to overdue chasing.
+ *
+ * `sendOverdueReminders` filters on `dueDate is not null`, so an invoice
+ * created without one can never age, never be chased and never appear in
+ * receivables with a meaningful age — it is simply money the business is never
+ * reminded to ask for. The form left the field blank and optional.
+ */
+test("an invoice created without a due date still gets one", async () => {
+  const res = await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "No terms given",
+          quantity: 1,
+          unitPrice: 5000,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+  expect(res.status).toBe(201);
+
+  const { invoice } = (await res.json()) as { invoice: { id: string } };
+  const [row] = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, invoice.id));
+
+  const dueDate = row?.dueDate;
+  if (!dueDate) throw new Error("an invoice must carry a due date");
+  // Thirty days, give or take the time the test takes to run.
+  const days = (dueDate.getTime() - Date.now()) / 86_400_000;
+  expect(days).toBeGreaterThan(29);
+  expect(days).toBeLessThan(31);
+});
+
+test("a due date the business chose is kept", async () => {
+  const chosen = "2027-02-01";
+  const res = await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      dueDate: chosen,
+      lines: [
+        { description: "Net 14", quantity: 1, unitPrice: 5000, taxRateBp: 0 },
+      ],
+    }),
+  });
+  const { invoice } = (await res.json()) as { invoice: { id: string } };
+  const [row] = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.id, invoice.id));
+  expect(row?.dueDate?.toISOString().slice(0, 10)).toBe(chosen);
+});
