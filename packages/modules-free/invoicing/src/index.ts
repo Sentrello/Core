@@ -34,6 +34,39 @@ function newPortalToken(): string {
 }
 
 /**
+ * The entry raising an invoice makes: Dr Accounts Receivable, Cr Income, plus
+ * any tax. Shared so every path that issues an invoice posts the same thing.
+ */
+async function postInvoiceIssued(
+  orgId: string,
+  invoice: {
+    id: string;
+    number: string;
+    subtotalCents: number;
+    taxCents: number;
+    totalCents: number;
+  },
+): Promise<void> {
+  const [ar, income, taxPayable] = await Promise.all([
+    ensureAccount(orgId, CORE_ACCOUNTS.accountsReceivable),
+    ensureAccount(orgId, CORE_ACCOUNTS.salesIncome),
+    ensureAccount(orgId, CORE_ACCOUNTS.taxPayable),
+  ]);
+  await postJournalEntry(
+    orgId,
+    `Invoice ${invoice.number}`,
+    `invoice:${invoice.id}`,
+    [
+      { accountId: ar, debitCents: invoice.totalCents },
+      { accountId: income, creditCents: invoice.subtotalCents },
+      ...(invoice.taxCents > 0
+        ? [{ accountId: taxPayable, creditCents: invoice.taxCents }]
+        : []),
+    ],
+  );
+}
+
+/**
  * Finds the customer a portal token belongs to.
  *
  * Exported because Pro adds paying to this page and must answer the same
@@ -328,6 +361,11 @@ export default defineModule({
           return inv;
         });
 
+        // An invoice from an accepted quote is an invoice: it posts the same
+        // entry as one raised directly, or the revenue exists on the invoice
+        // and nowhere in the books.
+        await postInvoiceIssued(orgId, invoice);
+
         return c.json({ invoice }, 201);
       },
     );
@@ -469,10 +507,22 @@ export default defineModule({
         .where(eq(schema.organizations.id, contact.organizationId))
         .limit(1);
 
+      const quotes = await db
+        .select()
+        .from(schema.quotes)
+        .where(
+          and(
+            eq(schema.quotes.organizationId, contact.organizationId),
+            eq(schema.quotes.contactId, contact.id),
+          ),
+        );
+
       return c.html(
         portalPage({
           businessName: org?.name ?? "Invoices",
           customerName: contact.name,
+          quotes,
+          quotePath: `/portal/${supplied}/quotes`,
           // Paying online is a Pro feature; a Free instance shows the bill and
           // leaves the customer to pay however they already do.
           payPath: ctx.entitled({ tier: "pro" })
@@ -488,6 +538,90 @@ export default defineModule({
         200,
         { "x-robots-tag": "noindex" },
       );
+    });
+
+    /**
+     * The customer accepting a quote.
+     *
+     * This is the one thing a customer can change from their own page, so it
+     * is narrow on purpose: only their own quote, only one the business has
+     * sent, and only into the invoice the business already priced.
+     */
+    ctx.app.post("/portal/:token/quotes/:id/accept", async (c) => {
+      const token = c.req.param("token");
+      const contact = await contactByPortalToken(token);
+      if (!contact) return c.notFound();
+
+      const [quote] = await db
+        .select()
+        .from(schema.quotes)
+        .where(
+          and(
+            eq(schema.quotes.id, c.req.param("id")),
+            eq(schema.quotes.organizationId, contact.organizationId),
+            eq(schema.quotes.contactId, contact.id),
+          ),
+        )
+        .limit(1);
+      // A quote already answered is not answerable again: accepting twice
+      // would raise a second invoice for the same work.
+      if (!quote || quote.status !== "sent") return c.notFound();
+
+      const lines = await db
+        .select()
+        .from(schema.quoteLines)
+        .where(eq(schema.quoteLines.quoteId, quote.id));
+
+      const invoice = await db.transaction(async (tx) => {
+        const [inv] = await tx
+          .insert(schema.invoices)
+          .values({
+            organizationId: contact.organizationId,
+            contactId: contact.id,
+            quoteId: quote.id,
+            currency: quote.currency,
+            number: await nextDocumentNumber(
+              tx,
+              contact.organizationId,
+              "invoice",
+            ),
+            status: "open",
+            subtotalCents: quote.subtotalCents,
+            taxCents: quote.taxCents,
+            totalCents: quote.totalCents,
+          })
+          .returning();
+        if (!inv) throw new Error("invoice insert returned no row");
+        if (lines.length > 0) {
+          await tx.insert(schema.invoiceLines).values(
+            lines.map((l) => ({
+              invoiceId: inv.id,
+              description: l.description,
+              quantity: l.quantity,
+              unitPriceCents: l.unitPriceCents,
+              taxRateBp: l.taxRateBp,
+            })),
+          );
+        }
+        await tx
+          .update(schema.quotes)
+          .set({ status: "accepted" })
+          .where(eq(schema.quotes.id, quote.id));
+        return inv;
+      });
+
+      await postInvoiceIssued(contact.organizationId, invoice);
+
+      // The business should find out from its own timeline, not by noticing.
+      await db.insert(schema.activities).values({
+        organizationId: contact.organizationId,
+        contactId: contact.id,
+        type: "note",
+        body: `Accepted quote ${quote.number} — invoice ${invoice.number} raised`,
+        occurredAt: new Date(),
+      });
+
+      return c.redirect(`/portal/${token}`, 303);
     });
 
     ctx.app.get(

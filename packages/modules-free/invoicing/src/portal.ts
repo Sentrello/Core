@@ -54,10 +54,19 @@ td { border-bottom:1px solid var(--line); padding:.7rem 0; }
 .owed { font-size:1.25rem; font-weight:600; margin:1.5rem 0 0; }
 .paid { color:#1f7a4d; } .due { color:#a16207; } .over { color:#b91c1c; }
 .muted { color:var(--muted); font-size:.875rem; }
+h2.section { font-size:1.05rem; margin:0 0 .75rem; }
 button.pay { font:inherit; font-weight:600; padding:.4rem .9rem; border:0;
   border-radius:.375rem; background:#2f8f8a; color:#fff; cursor:pointer; }
 form { margin:0; }
 `;
+
+export interface PortalQuote {
+  id: string;
+  number: string;
+  status: string;
+  currency: string;
+  totalCents: number;
+}
 
 export interface PortalInvoice {
   id: string;
@@ -67,6 +76,41 @@ export interface PortalInvoice {
   totalCents: number;
   paidCents: number;
   dueDate: Date | string | null;
+}
+
+/**
+ * Quotes awaiting an answer.
+ *
+ * Only ones the business has actually sent: a draft is the business thinking
+ * out loud, and a customer seeing it would be reading over their shoulder.
+ * Accepting is a real form post, so it works with scripts blocked.
+ */
+function quoteSection(quotes: PortalQuote[], quotePath?: string): string {
+  const open = quotes.filter((q) => q.status === "sent");
+  if (open.length === 0) return "";
+
+  const rows = open
+    .map(
+      (q) => `<tr>
+  <td>${html(q.number)}</td>
+  <td class="num">${html(money(q.totalCents, q.currency))}</td>
+  <td class="num">${
+    quotePath
+      ? `<form method="post" action="${html(quotePath)}/${html(q.id)}/accept">
+       <button class="pay" type="submit">Accept</button></form>`
+      : ""
+  }</td>
+</tr>`,
+    )
+    .join("\n");
+
+  return `<h2 class="section">Quotes for you to approve</h2>
+<table>
+  <thead><tr><th>Quote</th><th class="num">Amount</th><th></th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<p class="muted" style="margin:.75rem 0 2.5rem">Accepting turns a quote into an
+invoice. Nothing is charged until you pay it.</p>`;
 }
 
 /** Overdue is a state the customer should see, not a state the seller knows. */
@@ -81,6 +125,10 @@ export function portalPage(args: {
   businessName: string;
   customerName: string;
   invoices: PortalInvoice[];
+  /** quotes waiting on this customer's answer */
+  quotes?: PortalQuote[];
+  /** where an Accept button posts */
+  quotePath?: string;
   /** where a Pay button posts, when this instance can take card payments */
   payPath?: string;
   now?: Date;
@@ -89,6 +137,8 @@ export function portalPage(args: {
     businessName,
     customerName,
     invoices,
+    quotes = [],
+    quotePath,
     payPath,
     now = new Date(),
   } = args;
@@ -132,7 +182,8 @@ export function portalPage(args: {
 <style>${STYLE}</style>
 </head><body><main>
 <h1>${html(businessName)}</h1>
-<p class="sub">Invoices for ${html(customerName)}</p>
+<p class="sub">For ${html(customerName)}</p>
+${quoteSection(quotes, quotePath)}
 <table>
   <thead><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead>
   <tbody>${rows}</tbody>

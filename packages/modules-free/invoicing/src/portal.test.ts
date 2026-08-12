@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type PortalInvoice, portalPage } from "./portal";
+import { type PortalInvoice, type PortalQuote, portalPage } from "./portal";
 
 const now = new Date("2026-08-12T00:00:00Z");
 
@@ -91,6 +91,59 @@ test("a business name cannot inject markup into its customer's page", () => {
   expect(html).not.toContain("<img src=x");
   expect(html).not.toContain("<b>INV</b>");
   expect(html).toContain("&lt;script&gt;");
+});
+
+const quote = (over: Partial<PortalQuote> = {}): PortalQuote => ({
+  id: "q-1",
+  number: "QUO-2001",
+  status: "sent",
+  currency: "USD",
+  totalCents: 45000,
+  ...over,
+});
+
+test("a sent quote is offered for approval", () => {
+  const html = portalPage({
+    businessName: "Northfield Joinery",
+    customerName: "Marguerite",
+    invoices: [],
+    quotes: [quote()],
+    quotePath: "/portal/tok/quotes",
+    now,
+  });
+  expect(html).toContain("QUO-2001");
+  expect(html).toContain("$450.00");
+  expect(html).toContain("/portal/tok/quotes/q-1/accept");
+  expect(html).toContain("Accept");
+});
+
+test("a draft quote is the business thinking out loud, not the customer's business", () => {
+  const html = portalPage({
+    businessName: "Northfield Joinery",
+    customerName: "Marguerite",
+    invoices: [],
+    quotes: [quote({ status: "draft", number: "QUO-DRAFT" })],
+    quotePath: "/portal/tok/quotes",
+    now,
+  });
+  expect(html).not.toContain("QUO-DRAFT");
+});
+
+test("an answered quote is not offered again", () => {
+  const html = portalPage({
+    businessName: "Northfield Joinery",
+    customerName: "Marguerite",
+    invoices: [],
+    quotes: [
+      quote({ status: "accepted", number: "QUO-DONE" }),
+      quote({ status: "declined", number: "QUO-NO" }),
+    ],
+    quotePath: "/portal/tok/quotes",
+    now,
+  });
+  expect(html).not.toContain("QUO-DONE");
+  expect(html).not.toContain("QUO-NO");
+  expect(html).not.toContain("Quotes for you to approve");
 });
 
 test("the page asks not to be indexed", () => {

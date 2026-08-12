@@ -339,6 +339,147 @@ test("sending the link needs somewhere to send it", async () => {
     .where(eq(schema.contacts.id, noEmail?.id ?? ""));
 });
 
+/** A quote the business has sent, ready for an answer. */
+async function sentQuote(forContactId: string, totalCents = 45000) {
+  const res = await app.request("http://localhost/api/quotes", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId: forContactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "Fitted shelving",
+          quantity: 1,
+          unitPrice: totalCents,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+  const { quote } = (await res.json()) as { quote: { id: string } };
+  await db
+    .update(schema.quotes)
+    .set({ status: "sent" })
+    .where(eq(schema.quotes.id, quote.id));
+  return quote.id;
+}
+
+const ledgerFor = async (source: string) => {
+  const [entry] = await db
+    .select({ id: schema.journalEntries.id })
+    .from(schema.journalEntries)
+    .where(eq(schema.journalEntries.source, source));
+  if (!entry) return [];
+  return db
+    .select({
+      debitCents: schema.journalLines.debitCents,
+      creditCents: schema.journalLines.creditCents,
+    })
+    .from(schema.journalLines)
+    .where(eq(schema.journalLines.entryId, entry.id));
+};
+
+test("a customer accepting a quote raises an invoice that reaches the books", async () => {
+  // Converting a quote used to create the invoice and post nothing, so the
+  // revenue existed on the document and nowhere in the accounts.
+  const quoteId = await sentQuote(contactId);
+  const minted = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link`,
+    { method: "POST", headers },
+  );
+  const token = new URL(((await minted.json()) as { url: string }).url).pathname
+    .split("/")
+    .pop() as string;
+
+  const res = await app.request(
+    `http://localhost/portal/${token}/quotes/${quoteId}/accept`,
+    { method: "POST" },
+  );
+  expect(res.status).toBe(303);
+
+  const [quote] = await db
+    .select()
+    .from(schema.quotes)
+    .where(eq(schema.quotes.id, quoteId));
+  expect(quote?.status).toBe("accepted");
+
+  const [invoice] = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.quoteId, quoteId));
+  expect(invoice?.totalCents).toBe(45000);
+
+  const lines = await ledgerFor(`invoice:${invoice?.id}`);
+  expect(lines.length).toBeGreaterThan(0);
+  const debits = lines.reduce((sum, l) => sum + l.debitCents, 0);
+  const credits = lines.reduce((sum, l) => sum + l.creditCents, 0);
+  expect(debits).toBe(credits);
+  expect(debits).toBe(45000);
+});
+
+test("a quote cannot be accepted twice", async () => {
+  // Twice would mean two invoices for one piece of work.
+  const quoteId = await sentQuote(contactId, 12000);
+  const minted = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link`,
+    { method: "POST", headers },
+  );
+  const token = new URL(((await minted.json()) as { url: string }).url).pathname
+    .split("/")
+    .pop() as string;
+
+  const first = await app.request(
+    `http://localhost/portal/${token}/quotes/${quoteId}/accept`,
+    { method: "POST" },
+  );
+  expect(first.status).toBe(303);
+
+  const again = await app.request(
+    `http://localhost/portal/${token}/quotes/${quoteId}/accept`,
+    { method: "POST" },
+  );
+  expect(again.status).toBe(404);
+
+  const invoices = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.quoteId, quoteId));
+  expect(invoices).toHaveLength(1);
+});
+
+test("a customer cannot accept somebody else's quote", async () => {
+  const [other] = await db
+    .insert(schema.contacts)
+    .values({
+      organizationId: orgId,
+      name: "Another customer",
+      email: `another-${suffix}@example.test`,
+    })
+    .returning();
+  const theirQuote = await sentQuote(other?.id ?? "", 88800);
+
+  const minted = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link`,
+    { method: "POST", headers },
+  );
+  const token = new URL(((await minted.json()) as { url: string }).url).pathname
+    .split("/")
+    .pop() as string;
+
+  const res = await app.request(
+    `http://localhost/portal/${token}/quotes/${theirQuote}/accept`,
+    { method: "POST" },
+  );
+  expect(res.status).toBe(404);
+
+  const invoices = await db
+    .select()
+    .from(schema.invoices)
+    .where(eq(schema.invoices.quoteId, theirQuote));
+  expect(invoices).toHaveLength(0);
+});
+
 test("minting a link for another organization's contact is a 404", async () => {
   const [foreign] = await db
     .insert(schema.contacts)
