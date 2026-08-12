@@ -12,7 +12,11 @@ import {
 import { invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { emailAdapter } from "@sentrello/email";
-import { invoiceEmail, portalLinkEmail } from "@sentrello/email/templates";
+import {
+  invoiceEmail,
+  portalLinkEmail,
+  receiptEmail,
+} from "@sentrello/email/templates";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { portalPage } from "./portal";
@@ -23,6 +27,58 @@ type IncomingLine = {
   unitPrice: number;
   taxRateBp: number;
 };
+
+/**
+ * Tells the customer their payment landed.
+ *
+ * A payment that produces silence leaves someone wondering whether it went
+ * through, which is the moment they email to ask. Never allowed to fail the
+ * payment: the money is recorded either way.
+ */
+async function sendReceipt(
+  orgId: string,
+  invoice: {
+    id: string;
+    number: string;
+    currency: string;
+    contactId: string | null;
+  },
+  amountCents: number,
+  balanceCents: number,
+  requestUrl: string,
+): Promise<void> {
+  try {
+    if (!invoice.contactId) return;
+    const [contact] = await db
+      .select()
+      .from(schema.contacts)
+      .where(eq(schema.contacts.id, invoice.contactId))
+      .limit(1);
+    if (!contact?.email) return;
+
+    const token = await ensurePortalToken(contact);
+    const base = process.env.SENTRELLO_BASE_URL ?? new URL(requestUrl).origin;
+    const [org] = await db
+      .select({ name: schema.organizations.name })
+      .from(schema.organizations)
+      .where(eq(schema.organizations.id, orgId))
+      .limit(1);
+
+    await emailAdapter().send({
+      to: contact.email,
+      ...receiptEmail({
+        number: invoice.number,
+        amountCents,
+        currency: invoice.currency,
+        balanceCents,
+        businessName: org?.name,
+        portalUrl: `${base}/portal/${token}`,
+      }),
+    });
+  } catch (err) {
+    console.error("[invoicing] sending the receipt failed", err);
+  }
+}
 
 /**
  * The customer's portal token, minted on first need.
@@ -273,6 +329,8 @@ export default defineModule({
             { accountId: ar, creditCents: amountCents },
           ],
         );
+
+        await sendReceipt(orgId, invoice, amountCents, balanceDue, c.req.url);
 
         return c.json({ payment, status, balanceDue }, 201);
       },

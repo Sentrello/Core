@@ -72,6 +72,36 @@ like a bill in the post.</p>`
   };
 }
 
+export function receiptEmail(args: {
+  number: string;
+  amountCents: number;
+  currency: string;
+  balanceCents: number;
+  businessName?: string;
+  portalUrl?: string;
+}) {
+  // A part payment leaves a balance, and saying so here saves the customer
+  // wondering whether the rest was forgotten.
+  const remaining =
+    args.balanceCents > 0
+      ? `<p>Still outstanding on this invoice:
+<strong>${formatMoney(args.balanceCents, args.currency)}</strong></p>`
+      : "<p>This invoice is now settled in full. Thank you.</p>";
+  const link = args.portalUrl
+    ? `<p><a href="${escapeHtml(args.portalUrl)}">See your invoices</a></p>`
+    : "";
+  return {
+    subject: `Receipt for invoice ${args.number}`,
+    html: layout(
+      "Payment received",
+      `<p>We received <strong>${formatMoney(args.amountCents, args.currency)}</strong>
+towards invoice ${escapeHtml(args.number)}${
+        args.businessName ? ` from ${escapeHtml(args.businessName)}` : ""
+      }.</p>${remaining}${link}`,
+    ),
+  };
+}
+
 export function portalLinkEmail(args: {
   businessName: string;
   url: string;
