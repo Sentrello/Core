@@ -19,6 +19,7 @@ export const statement = {
   scheduling: ["read", "create", "update", "delete"],
   shop: ["read", "create", "update", "delete"],
   projects: ["read", "create", "update", "delete"],
+  inventory: ["read", "create", "update", "delete"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -36,6 +37,7 @@ export const admin = ac.newRole({
   scheduling: ["read", "create", "update", "delete"],
   shop: ["read", "create", "update", "delete"],
   projects: ["read", "create", "update", "delete"],
+  inventory: ["read", "create", "update", "delete"],
 });
 
 export const accounting = ac.newRole({
@@ -52,6 +54,8 @@ export const accounting = ac.newRole({
   shop: ["read"],
   // a job's profitability is a bookkeeping question before it is anyone else's
   projects: ["read", "create", "update"],
+  // closing stock is a number the books depend on
+  inventory: ["read"],
 });
 
 export const staff = ac.newRole({
@@ -67,6 +71,8 @@ export const staff = ac.newRole({
   shop: ["read"],
   // staff work on jobs and record against them; deleting one is not theirs
   projects: ["read", "create", "update"],
+  // staff move stock all day; what it costs and what it sells for is not theirs
+  inventory: ["read", "create", "update"],
 });
 
 // External portal users — RBAC is intentionally tiny; row-level scoping to their
