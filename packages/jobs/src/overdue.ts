@@ -9,7 +9,11 @@ import { isOverdue } from "./dates";
 /** Don't nag: at most one reminder per invoice per this many hours. */
 const REMINDER_INTERVAL_HOURS = 24 * 7;
 
-export async function sendOverdueReminders(now = new Date()) {
+export async function sendOverdueReminders(
+  now = new Date(),
+  /** Free credits the product; Pro sends under the business's own name. */
+  options: { sentrelloCredit?: boolean } = {},
+) {
   const candidates = await db
     .select()
     .from(schema.invoices)
@@ -57,6 +61,7 @@ export async function sendOverdueReminders(now = new Date()) {
       balanceDueCents: balanceDue,
       currency: invoice.currency,
       business: await businessIdentity(invoice.organizationId),
+      sentrelloCredit: options.sentrelloCredit ?? true,
     });
     await mailer.send({ to: contact.email, ...mail });
 

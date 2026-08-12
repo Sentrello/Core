@@ -68,16 +68,25 @@ function sellerFooter(b?: BusinessIdentity): string {
   }</p>${pay}`;
 }
 
+/**
+ * "Sent by Sentrello" on a business's own invoice is the product's name where
+ * the customer expects the seller's. Free instances carry it; Pro is paid for,
+ * and a paying business sends documents that look like theirs.
+ *
+ * Defaults to showing it, so a sender that forgets to ask credits the product
+ * rather than silently white-labelling a Free instance.
+ */
 function layout(
   title: string,
   body: string,
   business?: BusinessIdentity,
+  sentrelloCredit = true,
 ): string {
   return `<!doctype html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111">
 <h1 style="font-size:18px">${escapeHtml(title)}</h1>
 ${body}
 ${sellerFooter(business)}
-<p style="color:#666;font-size:12px">Sent by Sentrello</p>
+${sentrelloCredit ? '<p style="color:#666;font-size:12px">Sent by Sentrello</p>' : ""}
 </body></html>`;
 }
 
@@ -101,6 +110,8 @@ export function invoiceEmail(args: {
   portalUrl?: string;
   /** The seller, for the foot of the document. */
   business?: BusinessIdentity;
+  /** False on Pro, where the business sends under its own name. */
+  sentrelloCredit?: boolean;
 }) {
   const due = args.dueDate
     ? `<p>Due ${escapeHtml(args.dueDate.toISOString().slice(0, 10))}.</p>`
@@ -120,6 +131,7 @@ like a bill in the post.</p>`
       `Invoice ${args.number}`,
       `<p>Amount due: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${due}${link}`,
       args.business,
+      args.sentrelloCredit,
     ),
   };
 }
@@ -132,6 +144,8 @@ export function quoteEmail(args: {
   portalUrl?: string;
   /** The seller, for the foot of the document. */
   business?: BusinessIdentity;
+  /** False on Pro, where the business sends under its own name. */
+  sentrelloCredit?: boolean;
 }) {
   const link = args.portalUrl
     ? `<p><a href="${escapeHtml(args.portalUrl)}">Read and accept this quote</a></p>
@@ -146,6 +160,7 @@ Nothing is charged until you pay it.</p>`
       `Quote ${args.number}`,
       `<p>Total: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${link}`,
       args.business,
+      args.sentrelloCredit,
     ),
   };
 }
@@ -159,6 +174,8 @@ export function receiptEmail(args: {
   portalUrl?: string;
   /** The seller, for the foot of the document. */
   business?: BusinessIdentity;
+  /** False on Pro, where the business sends under its own name. */
+  sentrelloCredit?: boolean;
 }) {
   // A part payment leaves a balance, and saying so here saves the customer
   // wondering whether the rest was forgotten.
@@ -179,6 +196,7 @@ towards invoice ${escapeHtml(args.number)}${
         args.businessName ? ` from ${escapeHtml(args.businessName)}` : ""
       }.</p>${remaining}${link}`,
       args.business,
+      args.sentrelloCredit,
     ),
   };
 }
@@ -210,6 +228,8 @@ export function overdueReminderEmail(args: {
   currency: string;
   /** The seller, for the foot of the document. */
   business?: BusinessIdentity;
+  /** False on Pro, where the business sends under its own name. */
+  sentrelloCredit?: boolean;
 }) {
   return {
     subject: `Invoice ${args.number} is overdue`,
@@ -217,6 +237,7 @@ export function overdueReminderEmail(args: {
       `Invoice ${args.number} is overdue`,
       `<p>Outstanding balance: <strong>${formatMoney(args.balanceDueCents, args.currency)}</strong></p>`,
       args.business,
+      args.sentrelloCredit,
     ),
   };
 }

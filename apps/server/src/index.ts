@@ -134,7 +134,11 @@ serveWeb(app);
 
 // Jobs run only in the real server process, never when a test imports this file.
 if (import.meta.main) {
-  await startJobs(jobs);
+  // The tier decides whether the overdue chase goes out under Sentrello's name
+  // or the business's own; a job has no request to read the licence from.
+  await startJobs(jobs, {
+    tier: state.claims?.tier === "pro" ? "pro" : "free",
+  });
 }
 
 const port = Number(process.env.PORT ?? 3000);

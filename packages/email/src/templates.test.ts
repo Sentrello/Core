@@ -62,3 +62,41 @@ test("the seller's details cannot inject markup into an email", () => {
   expect(mail.html).not.toContain("<script>");
   expect(mail.html).toContain("&lt;script&gt;");
 });
+
+/**
+ * "Sent by Sentrello" on a business's own invoice is the product's name where
+ * the customer expects the seller's. Free carries it; Pro is paid for.
+ */
+test("a Free instance credits the product", () => {
+  const mail = invoiceEmail({
+    number: "INV-0001",
+    totalCents: 1000,
+    currency: "GBP",
+    business: seller,
+    sentrelloCredit: true,
+  });
+  expect(mail.html).toContain("Sent by Sentrello");
+});
+
+test("Pro sends under the business's own name", () => {
+  const mail = invoiceEmail({
+    number: "INV-0001",
+    totalCents: 1000,
+    currency: "GBP",
+    business: seller,
+    sentrelloCredit: false,
+  });
+  expect(mail.html).not.toContain("Sentrello");
+  // The seller is still named — white-labelled, not anonymous.
+  expect(mail.html).toContain("Wierzbicki Tiling");
+});
+
+test("a sender that forgets to ask credits the product", () => {
+  // Defaulting the other way would silently white-label every Free instance.
+  const mail = invoiceEmail({
+    number: "INV-1",
+    totalCents: 1,
+    currency: "GBP",
+  });
+  expect(mail.html).toContain("Sent by Sentrello");
+});

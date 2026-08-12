@@ -52,6 +52,8 @@ async function sendReceipt(
   amountCents: number,
   balanceCents: number,
   requestUrl: string,
+  /** False on Pro: a paying business sends under its own name. */
+  sentrelloCredit = true,
 ): Promise<void> {
   try {
     if (!invoice.contactId) return;
@@ -75,6 +77,7 @@ async function sendReceipt(
         balanceCents,
         businessName: business.name,
         business,
+        sentrelloCredit,
         portalUrl: `${base}/portal/${token}`,
       }),
     });
@@ -304,7 +307,14 @@ export default defineModule({
           ],
         );
 
-        await sendReceipt(orgId, invoice, amountCents, balanceDue, c.req.url);
+        await sendReceipt(
+          orgId,
+          invoice,
+          amountCents,
+          balanceDue,
+          c.req.url,
+          !ctx.entitled({ tier: "pro" }),
+        );
 
         return c.json({ payment, status, balanceDue }, 201);
       },
@@ -380,6 +390,7 @@ export default defineModule({
               currency: quote.currency,
               businessName: org?.name,
               business: await businessIdentity(orgId),
+              sentrelloCredit: !ctx.entitled({ tier: "pro" }),
               portalUrl: `${base}/portal/${token}`,
             }),
           });
@@ -818,6 +829,7 @@ export default defineModule({
               // The copy the customer keeps: it carries the seller's address
               // and how to pay, as the portal page does.
               business: await businessIdentity(orgId),
+              sentrelloCredit: !ctx.entitled({ tier: "pro" }),
               portalUrl: `${base}/portal/${token}`,
             }),
           });

@@ -42,7 +42,15 @@ export interface ModuleJob {
  * and so a job left behind by a module the licence no longer loads is obvious
  * in the pg-boss tables.
  */
-export async function startJobs(moduleJobs: ModuleJob[] = []) {
+export async function startJobs(
+  moduleJobs: ModuleJob[] = [],
+  /**
+   * What this instance is licensed for. Only the overdue chase needs it, to
+   * decide whether the mail it sends credits Sentrello or goes out under the
+   * business's own name — and a job has no request to read it from.
+   */
+  options: { tier?: "free" | "pro" } = {},
+) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
 
@@ -62,7 +70,13 @@ export async function startJobs(moduleJobs: ModuleJob[] = []) {
 
   const all: ModuleJob[] = [
     { name: QUEUES.recurringInvoices, handler: () => runRecurringInvoices() },
-    { name: QUEUES.overdueReminders, handler: () => sendOverdueReminders() },
+    {
+      name: QUEUES.overdueReminders,
+      handler: () =>
+        sendOverdueReminders(new Date(), {
+          sentrelloCredit: options.tier !== "pro",
+        }),
+    },
     { name: QUEUES.licenseRefresh, handler: () => refreshLicenseToken() },
     ...moduleJobs,
   ];
