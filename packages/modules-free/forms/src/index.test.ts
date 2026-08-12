@@ -422,3 +422,46 @@ test("a bot filling the honeypot sees what a person sees", async () => {
     .where(eq(schema.formSubmissions.organizationId, orgId));
   expect(after).toHaveLength(before.length);
 });
+
+/**
+ * A form's key is a public credential — it is posted to from a stranger's
+ * browser — so the management side has to be certain that holding a session
+ * for one business shows nothing belonging to another.
+ */
+test("another organization's forms and submissions are invisible", async () => {
+  const theirs = `other-org-${crypto.randomUUID().slice(0, 8)}`;
+
+  const [form] = await db
+    .insert(schema.forms)
+    .values({
+      organizationId: theirs,
+      key: `frm_theirs_${suffix}`,
+      name: "Their Secret Enquiry Form",
+      kind: "contact",
+      fields: [],
+      allowedOrigins: [],
+    })
+    .returning();
+
+  await db.insert(schema.formSubmissions).values({
+    organizationId: theirs,
+    formId: form?.id as string,
+    payload: { name: "Their Private Lead" },
+  });
+
+  const list = await app.request("http://localhost/api/forms", { headers });
+  const body = await list.text();
+  expect(body).not.toContain("Their Secret Enquiry Form");
+
+  // Nor by asking for their form's submissions directly.
+  const direct = await app.request(
+    `http://localhost/api/forms/${form?.id}/submissions`,
+    { headers },
+  );
+  expect(await direct.text()).not.toContain("Their Private Lead");
+
+  await db
+    .delete(schema.formSubmissions)
+    .where(eq(schema.formSubmissions.organizationId, theirs));
+  await db.delete(schema.forms).where(eq(schema.forms.organizationId, theirs));
+});

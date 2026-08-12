@@ -218,3 +218,40 @@ test("an address longer than a document is refused", async () => {
   expect(res.status).toBe(400);
   expect(((await res.json()) as { error: string }).error).toContain("address");
 });
+
+/**
+ * Settings name the business and carry what appears on its invoices, so a
+ * scoping slip here would show one business another's address and bank
+ * details — and let it rename them.
+ */
+test("another organization's settings cannot be read or written", async () => {
+  const theirs = `other-org-${crypto.randomUUID().slice(0, 8)}`;
+  await db.insert(schema.organizations).values({
+    id: theirs,
+    name: "Their Secret Trading Name",
+    slug: theirs,
+    createdAt: new Date(),
+    address: "Their Private Address",
+  });
+
+  const read = await app.request("http://localhost/api/settings", { headers });
+  const body = await read.text();
+  expect(body).not.toContain("Their Secret Trading Name");
+  expect(body).not.toContain("Their Private Address");
+
+  // Writing goes to the session's own organization, whatever is asked for.
+  await app.request("http://localhost/api/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ name: "Renamed", organizationId: theirs }),
+  });
+  const [untouched] = await db
+    .select()
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, theirs));
+  expect(untouched?.name).toBe("Their Secret Trading Name");
+
+  await db
+    .delete(schema.organizations)
+    .where(eq(schema.organizations.id, theirs));
+});

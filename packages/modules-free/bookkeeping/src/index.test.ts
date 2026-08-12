@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { auth } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
+import { postJournalEntry } from "@sentrello/db/ledger";
 import type { SentrelloEnv } from "@sentrello/module-sdk";
 import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
@@ -206,4 +207,65 @@ test("an amount that is not integer cents is refused", async () => {
     amountCents: 12.5,
   });
   expect(res.status).toBe(400);
+});
+
+/**
+ * The books are the most private thing in the instance.
+ *
+ * Every business query is supposed to be organizationId-scoped; this is the
+ * test that says so out loud for the ledger, rather than trusting that every
+ * `where` clause was written correctly. A missed filter here shows one
+ * business another's accounts.
+ */
+test("another organization's books are invisible from here", async () => {
+  const theirs = `other-org-${crypto.randomUUID().slice(0, 8)}`;
+
+  const [account] = await db
+    .insert(schema.accounts)
+    .values({
+      organizationId: theirs,
+      code: "9999",
+      name: "Their Secret Account",
+      type: "expense",
+    })
+    .returning();
+
+  await db.insert(schema.expenses).values({
+    organizationId: theirs,
+    amountCents: 123_456,
+    vendor: "Their Supplier",
+  });
+
+  const entry = await postJournalEntry(theirs, "Theirs", "test:theirs", [
+    { accountId: account?.id as string, debitCents: 123_456 },
+    { accountId: account?.id as string, creditCents: 123_456 },
+  ]);
+  expect(entry).toBeTruthy();
+
+  for (const path of [
+    "/api/accounts",
+    "/api/expenses",
+    "/api/journal",
+    "/api/reports/profit-and-loss",
+  ]) {
+    const res = await app.request(`http://localhost${path}`, { headers });
+    const body = await res.text();
+    expect(body).not.toContain("Their Secret Account");
+    expect(body).not.toContain("Their Supplier");
+    expect(body).not.toContain("123456");
+  }
+
+  // Clean up the other organization's rows.
+  await db
+    .delete(schema.journalLines)
+    .where(eq(schema.journalLines.entryId, entry.id));
+  await db
+    .delete(schema.journalEntries)
+    .where(eq(schema.journalEntries.organizationId, theirs));
+  await db
+    .delete(schema.expenses)
+    .where(eq(schema.expenses.organizationId, theirs));
+  await db
+    .delete(schema.accounts)
+    .where(eq(schema.accounts.organizationId, theirs));
 });
