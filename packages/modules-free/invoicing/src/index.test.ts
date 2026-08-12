@@ -247,6 +247,91 @@ test("paying an invoice from another organization is a 404, not a leak", async (
   await db.delete(schema.invoices).where(eq(schema.invoices.id, foreign.id));
 });
 
+test("a customer's portal link shows their invoices and nobody else's", async () => {
+  // The people being invoiced have no account: the link is the credential.
+  const minted = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link`,
+    { method: "POST", headers },
+  );
+  expect(minted.status).toBe(200);
+  const { url } = (await minted.json()) as { url: string };
+  const path = new URL(url).pathname;
+  expect(path).toMatch(/^\/portal\/[\w-]{43}$/);
+
+  const [other] = await db
+    .insert(schema.contacts)
+    .values({
+      organizationId: orgId,
+      name: "Somebody Else",
+      email: `other-${suffix}@example.test`,
+    })
+    .returning();
+  await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId: other?.id,
+      currency: "USD",
+      lines: [
+        {
+          description: "Not yours",
+          quantity: 1,
+          unitPrice: 99900,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+
+  const page = await app.request(`http://localhost${path}`);
+  expect(page.status).toBe(200);
+  expect(page.headers.get("content-type")).toContain("text/html");
+  const body = await page.text();
+  expect(body).toContain("Acme Ltd");
+  expect(body).not.toContain("Somebody Else");
+  expect(body).not.toContain("$999.00");
+});
+
+test("a guessed portal link is a 404, and rotating revokes the old one", async () => {
+  const first = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link`,
+    { method: "POST", headers },
+  );
+  const oldPath = new URL(((await first.json()) as { url: string }).url)
+    .pathname;
+
+  const guess = await app.request(`http://localhost/portal/${"z".repeat(43)}`);
+  expect(guess.status).toBe(404);
+  expect((await app.request("http://localhost/portal/short")).status).toBe(404);
+
+  const rotated = await app.request(
+    `http://localhost/api/contacts/${contactId}/portal-link?rotate=1`,
+    { method: "POST", headers },
+  );
+  const newPath = new URL(((await rotated.json()) as { url: string }).url)
+    .pathname;
+
+  expect(newPath).not.toBe(oldPath);
+  expect((await app.request(`http://localhost${oldPath}`)).status).toBe(404);
+  expect((await app.request(`http://localhost${newPath}`)).status).toBe(200);
+});
+
+test("minting a link for another organization's contact is a 404", async () => {
+  const [foreign] = await db
+    .insert(schema.contacts)
+    .values({ organizationId: `org_other_${suffix}`, name: "Not yours" })
+    .returning();
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${foreign?.id}/portal-link`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(404);
+  await db
+    .delete(schema.contacts)
+    .where(eq(schema.contacts.id, foreign?.id ?? ""));
+});
+
 test("the invoice list only returns this organization's rows", async () => {
   const res = await app.request("http://localhost/api/invoices", { headers });
   const body = (await res.json()) as {

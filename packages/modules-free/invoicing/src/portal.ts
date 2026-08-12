@@ -1,0 +1,130 @@
+/**
+ * The page a customer sees when they follow the link on their invoice.
+ *
+ * No account, no password. The people being invoiced are customers of a small
+ * business — a joiner's customer will not create a login to look at a bill,
+ * and a bill nobody opens is a bill nobody pays. The token in the link is the
+ * whole credential, exactly as the calendar feed and download links work.
+ *
+ * Server-rendered, because this has to survive a phone on a bad signal.
+ */
+
+const html = (s: string) =>
+  s.replace(
+    /[&<>"']/g,
+    (ch) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[ch] ?? ch,
+  );
+
+function money(cents: number, currency = "USD"): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+    cents / 100,
+  );
+}
+
+function day(value: Date | string | null): string {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(d);
+}
+
+const STYLE = `
+:root { color-scheme: light dark; --ink:#1a1a1a; --muted:#666; --line:#e4e4e7; --bg:#fff; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#f4f4f5; --muted:#a1a1aa; --line:#333; --bg:#131313; }
+}
+* { box-sizing: border-box; }
+body { font:16px/1.6 system-ui,-apple-system,sans-serif; color:var(--ink);
+  background:var(--bg); margin:0; padding:3rem 1.5rem; }
+main { max-width:44rem; margin:0 auto; }
+h1 { font-size:1.5rem; margin:0 0 .25rem; }
+.sub { color:var(--muted); margin:0 0 2rem; }
+table { width:100%; border-collapse:collapse; font-size:.95rem; }
+th { text-align:left; font-weight:600; border-bottom:1px solid var(--line); padding:.6rem 0; }
+td { border-bottom:1px solid var(--line); padding:.7rem 0; }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+.owed { font-size:1.25rem; font-weight:600; margin:1.5rem 0 0; }
+.paid { color:#1f7a4d; } .due { color:#a16207; } .over { color:#b91c1c; }
+.muted { color:var(--muted); font-size:.875rem; }
+a.pay { display:inline-block; margin-top:1.5rem; padding:.6rem 1.1rem;
+  background:#2f8f8a; color:#fff; border-radius:.375rem; text-decoration:none;
+  font-weight:600; }
+`;
+
+export interface PortalInvoice {
+  id: string;
+  number: string;
+  status: string;
+  currency: string;
+  totalCents: number;
+  paidCents: number;
+  dueDate: Date | string | null;
+}
+
+/** Overdue is a state the customer should see, not a state the seller knows. */
+function label(invoice: PortalInvoice, now = new Date()): string {
+  if (invoice.status === "paid") return "paid";
+  const due = invoice.dueDate ? new Date(invoice.dueDate) : null;
+  if (due && due.getTime() < now.getTime()) return "overdue";
+  return invoice.status === "partial" ? "part paid" : "due";
+}
+
+export function portalPage(args: {
+  businessName: string;
+  customerName: string;
+  invoices: PortalInvoice[];
+  now?: Date;
+}): string {
+  const { businessName, customerName, invoices, now = new Date() } = args;
+
+  const owed = invoices.reduce(
+    (sum, i) => sum + Math.max(0, i.totalCents - i.paidCents),
+    0,
+  );
+  const currency = invoices[0]?.currency ?? "USD";
+
+  const rows =
+    invoices.length === 0
+      ? `<tr><td colspan="4" class="muted">Nothing outstanding.</td></tr>`
+      : invoices
+          .map((i) => {
+            const state = label(i, now);
+            const cls =
+              state === "paid" ? "paid" : state === "overdue" ? "over" : "due";
+            const balance = Math.max(0, i.totalCents - i.paidCents);
+            return `<tr>
+  <td>${html(i.number)}</td>
+  <td>${html(day(i.dueDate))}</td>
+  <td class="${cls}">${html(state)}</td>
+  <td class="num">${html(money(balance || i.totalCents, i.currency))}</td>
+</tr>`;
+          })
+          .join("\n");
+
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>${html(businessName)} — your invoices</title>
+<style>${STYLE}</style>
+</head><body><main>
+<h1>${html(businessName)}</h1>
+<p class="sub">Invoices for ${html(customerName)}</p>
+<table>
+  <thead><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Amount</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+${owed > 0 ? `<p class="owed">${html(money(owed, currency))} outstanding</p>` : `<p class="owed paid">Nothing outstanding</p>`}
+<p class="muted" style="margin-top:2rem">This page is private to you. Anyone
+with the link can see it, so treat it like a bill in the post.</p>
+</main></body></html>`;
+}

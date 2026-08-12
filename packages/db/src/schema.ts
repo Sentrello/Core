@@ -57,6 +57,15 @@ export const contacts = pgTable(
     phone: text("phone"),
     // for customer-portal row scoping: links a portal user to their contact record
     portalUserId: text("portal_user_id"),
+    /**
+     * Bearer of this customer's portal link.
+     *
+     * A token rather than an account: the people being invoiced are customers
+     * of a small business, and asking them to create a login to look at a bill
+     * is how a bill goes unread. Null until someone asks for the link;
+     * reissuing revokes the old one.
+     */
+    portalToken: text("portal_token"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [

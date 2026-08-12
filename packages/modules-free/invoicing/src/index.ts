@@ -12,7 +12,8 @@ import {
 import { invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { defineModule } from "@sentrello/module-sdk";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
+import { portalPage } from "./portal";
 
 type IncomingLine = {
   description: string;
@@ -20,6 +21,26 @@ type IncomingLine = {
   unitPrice: number;
   taxRateBp: number;
 };
+
+/** 32 random bytes, URL-safe: the link is the whole credential. */
+function newPortalToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** Constant time: a token check that leaks timing is not a check. */
+function tokenMatches(supplied: string, expected: string): boolean {
+  const a = new TextEncoder().encode(supplied);
+  const b = new TextEncoder().encode(expected);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1)
+    diff |= (a[i] as number) ^ (b[i] as number);
+  return diff === 0;
+}
 
 export default defineModule({
   id: "invoicing",
@@ -298,6 +319,103 @@ export default defineModule({
      * portal user is resolved to their contact record and the query is filtered
      * to that contact, so a customer can never read another customer's invoice.
      */
+    /**
+     * Mints the link a customer follows to see what they owe.
+     *
+     * `?rotate=1` reissues it, which is how a business takes a shared link out
+     * of circulation.
+     */
+    ctx.app.post(
+      "/api/contacts/:id/portal-link",
+      requireSession(),
+      requirePermission({ invoicing: ["read"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const [contact] = await db
+          .select()
+          .from(schema.contacts)
+          .where(
+            and(
+              eq(schema.contacts.id, c.req.param("id")),
+              eq(schema.contacts.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!contact) return c.json({ error: "not found" }, 404);
+
+        let token = contact.portalToken;
+        if (!token || c.req.query("rotate") === "1") {
+          token = newPortalToken();
+          await db
+            .update(schema.contacts)
+            .set({ portalToken: token })
+            .where(eq(schema.contacts.id, contact.id));
+        }
+
+        const base =
+          process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
+        return c.json({ url: `${base}/portal/${token}` });
+      },
+    );
+
+    /**
+     * The customer's own page. Unauthenticated by necessity — they have no
+     * account — so the token is compared in constant time and a wrong one is
+     * a 404, which is what an unknown URL looks like.
+     */
+    ctx.app.get("/portal/:token", async (c) => {
+      const supplied = c.req.param("token");
+      if (supplied.length < 20) return c.notFound();
+
+      const candidates = await db
+        .select()
+        .from(schema.contacts)
+        .where(isNotNull(schema.contacts.portalToken));
+      const contact = candidates.find((row) =>
+        tokenMatches(supplied, row.portalToken ?? ""),
+      );
+      if (!contact) return c.notFound();
+
+      const rows = await db
+        .select()
+        .from(schema.invoices)
+        .where(
+          and(
+            eq(schema.invoices.organizationId, contact.organizationId),
+            eq(schema.invoices.contactId, contact.id),
+          ),
+        );
+
+      const paid = await db
+        .select({
+          invoiceId: schema.payments.invoiceId,
+          amountCents: schema.payments.amountCents,
+        })
+        .from(schema.payments)
+        .where(eq(schema.payments.organizationId, contact.organizationId));
+
+      const [org] = await db
+        .select({ name: schema.organizations.name })
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, contact.organizationId))
+        .limit(1);
+
+      return c.html(
+        portalPage({
+          businessName: org?.name ?? "Invoices",
+          customerName: contact.name,
+          invoices: rows.map((invoice) => ({
+            ...invoice,
+            paidCents: paid
+              .filter((p) => p.invoiceId === invoice.id)
+              .reduce((sum, p) => sum + p.amountCents, 0),
+          })),
+        }),
+        200,
+        { "x-robots-tag": "noindex" },
+      );
+    });
+
     ctx.app.get(
       "/api/portal/invoices",
       requireSession(),
