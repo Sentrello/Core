@@ -1,4 +1,5 @@
 import { Hono, type MiddlewareHandler } from "hono";
+import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 
 export type Tier = "free" | "pro" | "module";
@@ -88,6 +89,16 @@ export interface SentrelloModule {
 }
 
 export * from "./public-endpoints";
+
+/**
+ * The context a route handler receives.
+ *
+ * Exported because TypeScript stops inferring it once a module registers
+ * enough routes, and a module cannot name the type itself without depending on
+ * Hono directly — which the bundle contract does not allow, since the
+ * container links only this small set of packages.
+ */
+export type RouteContext = Context<SentrelloEnv>;
 
 export function defineModule(m: SentrelloModule): SentrelloModule {
   return m;

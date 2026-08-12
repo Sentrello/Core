@@ -56,14 +56,26 @@ export async function verifyLicenseToken(
   return { claims: null, valid: false, reason };
 }
 
-/** The gate every module and route uses. Free is the safe default. */
+/**
+ * The gate every module and route uses. Free is the safe default.
+ *
+ * Optional modules are sold as a marketplace to Pro subscribers, so a module
+ * entitlement is worth nothing on its own: it needs Pro underneath it. That
+ * rule lives here rather than only in what the licence server agrees to sign,
+ * because a token is a file on the customer's disk and the instance is the
+ * thing that has to be right. A licence naming modules without Pro loads none
+ * of them.
+ */
 export function makeEntitlementGate(state: LicenseState) {
   const claims = state.valid ? state.claims : null;
   const tier = claims?.tier ?? "free";
   const modules = claims?.modules ?? [];
   return (need: EntitlementNeed): boolean => {
     if (need.tier === "pro" && tier !== "pro") return false;
-    if (need.module && !modules.includes(need.module)) return false;
+    if (need.module) {
+      if (tier !== "pro") return false;
+      if (!modules.includes(need.module)) return false;
+    }
     return true;
   };
 }

@@ -124,3 +124,45 @@ test("an untrusted key is rejected however many keys are trusted", async () => {
   expect(state.valid).toBe(false);
   expect(makeEntitlementGate(state)({ tier: "pro" })).toBe(false);
 });
+
+/**
+ * Optional modules are a marketplace for Pro subscribers, so a module
+ * entitlement is worth nothing without Pro underneath it.
+ *
+ * Enforced here and not only at the licence server, because the token is a
+ * file on the customer's disk: the instance is the thing that has to be right.
+ */
+test("a module entitlement without Pro grants nothing", () => {
+  const gate = makeEntitlementGate({
+    valid: true,
+    claims: { tier: "free", modules: ["projects", "scheduling"] } as never,
+  });
+
+  expect(gate({ module: "projects" })).toBe(false);
+  expect(gate({ module: "scheduling" })).toBe(false);
+  // Free features are unaffected: nothing about this downgrades the core.
+  expect(gate({})).toBe(true);
+});
+
+test("Pro plus the module is what loads it", () => {
+  const gate = makeEntitlementGate({
+    valid: true,
+    claims: { tier: "pro", modules: ["projects"] } as never,
+  });
+
+  expect(gate({ module: "projects" })).toBe(true);
+  // Bought Pro, did not buy this one.
+  expect(gate({ module: "inventory" })).toBe(false);
+  expect(gate({ tier: "pro" })).toBe(true);
+});
+
+test("an invalid licence naming Pro and every module still grants nothing", () => {
+  const gate = makeEntitlementGate({
+    valid: false,
+    claims: { tier: "pro", modules: ["projects"] } as never,
+    reason: "expired",
+  });
+
+  expect(gate({ tier: "pro" })).toBe(false);
+  expect(gate({ module: "projects" })).toBe(false);
+});
