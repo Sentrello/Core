@@ -108,16 +108,48 @@ export function Invoices() {
                 {formatMoney(inv.totalCents, inv.currency)}
               </td>
               <td className="text-right">
-                {inv.status !== "paid" ? (
-                  <Button variant="secondary" onClick={() => setPaying(inv)}>
-                    Record payment
-                  </Button>
-                ) : null}
+                <div className="flex justify-end gap-2">
+                  <SendInvoice invoice={inv} />
+                  {inv.status !== "paid" ? (
+                    <Button variant="secondary" onClick={() => setPaying(inv)}>
+                      Record payment
+                    </Button>
+                  ) : null}
+                </div>
               </td>
             </Row>
           ))}
         </Table>
       )}
+    </div>
+  );
+}
+
+/**
+ * Sending the invoice to the customer.
+ *
+ * The email carries their portal link, so the next thing they can do is pay
+ * it. An invoice that has to be replied to in order to be paid is one that
+ * sits in an inbox.
+ */
+function SendInvoice({ invoice }: { invoice: Invoice }) {
+  const send = useMutation({
+    mutationFn: () =>
+      api<{ sent: boolean; to: string }>(`/api/invoices/${invoice.id}/send`, {
+        method: "POST",
+      }),
+  });
+
+  return (
+    <div>
+      <Button
+        variant="secondary"
+        onClick={() => send.mutate()}
+        disabled={send.isPending}
+      >
+        {send.isPending ? "Sending…" : send.data?.sent ? "Sent" : "Send"}
+      </Button>
+      {send.error ? <ErrorNote error={send.error} /> : null}
     </div>
   );
 }

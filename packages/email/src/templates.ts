@@ -47,15 +47,27 @@ export function invoiceEmail(args: {
   totalCents: number;
   currency: string;
   dueDate?: Date | null;
+  businessName?: string;
+  /** the customer's own page, where they can see and settle this */
+  portalUrl?: string;
 }) {
   const due = args.dueDate
     ? `<p>Due ${escapeHtml(args.dueDate.toISOString().slice(0, 10))}.</p>`
     : "";
+  // The link is the point of the email: an invoice a customer has to reply to
+  // in order to pay is an invoice that waits.
+  const link = args.portalUrl
+    ? `<p><a href="${escapeHtml(args.portalUrl)}">View and pay this invoice</a></p>
+<p style="color:#666;font-size:12px">This link is private to you — treat it
+like a bill in the post.</p>`
+    : "";
   return {
-    subject: `Invoice ${args.number}`,
+    subject: args.businessName
+      ? `Invoice ${args.number} from ${args.businessName}`
+      : `Invoice ${args.number}`,
     html: layout(
       `Invoice ${args.number}`,
-      `<p>Amount due: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${due}`,
+      `<p>Amount due: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${due}${link}`,
     ),
   };
 }

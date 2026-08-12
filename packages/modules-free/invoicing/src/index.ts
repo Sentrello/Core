@@ -12,7 +12,7 @@ import {
 import { invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
 import { emailAdapter } from "@sentrello/email";
-import { portalLinkEmail } from "@sentrello/email/templates";
+import { invoiceEmail, portalLinkEmail } from "@sentrello/email/templates";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { portalPage } from "./portal";
@@ -23,6 +23,25 @@ type IncomingLine = {
   unitPrice: number;
   taxRateBp: number;
 };
+
+/**
+ * The customer's portal token, minted on first need.
+ *
+ * Every path that wants to link a customer to their own page goes through
+ * here, so a token is never created two different ways.
+ */
+async function ensurePortalToken(
+  contact: { id: string; portalToken: string | null },
+  rotate = false,
+): Promise<string> {
+  if (contact.portalToken && !rotate) return contact.portalToken;
+  const token = newPortalToken();
+  await db
+    .update(schema.contacts)
+    .set({ portalToken: token })
+    .where(eq(schema.contacts.id, contact.id));
+  return token;
+}
 
 /** 32 random bytes, URL-safe: the link is the whole credential. */
 function newPortalToken(): string {
@@ -400,14 +419,10 @@ export default defineModule({
           .limit(1);
         if (!contact) return c.json({ error: "not found" }, 404);
 
-        let token = contact.portalToken;
-        if (!token || c.req.query("rotate") === "1") {
-          token = newPortalToken();
-          await db
-            .update(schema.contacts)
-            .set({ portalToken: token })
-            .where(eq(schema.contacts.id, contact.id));
-        }
+        const token =
+          c.req.query("rotate") === "1"
+            ? await ensurePortalToken(contact, true)
+            : await ensurePortalToken(contact);
 
         const base =
           process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
@@ -539,6 +554,84 @@ export default defineModule({
         { "x-robots-tag": "noindex" },
       );
     });
+
+    /**
+     * Sending an invoice to the customer.
+     *
+     * The template existed and nothing called it, so a business could raise an
+     * invoice and had no way to deliver it. The email carries the customer's
+     * portal link, because an invoice someone has to reply to in order to pay
+     * is an invoice that waits.
+     */
+    ctx.app.post(
+      "/api/invoices/:id/send",
+      requireSession(),
+      requirePermission({ invoicing: ["send"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const [invoice] = await db
+          .select()
+          .from(schema.invoices)
+          .where(
+            and(
+              eq(schema.invoices.id, c.req.param("id")),
+              eq(schema.invoices.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!invoice) return c.json({ error: "not found" }, 404);
+        if (!invoice.contactId) {
+          return c.json({ error: "this invoice has no customer" }, 400);
+        }
+
+        const [contact] = await db
+          .select()
+          .from(schema.contacts)
+          .where(eq(schema.contacts.id, invoice.contactId))
+          .limit(1);
+        if (!contact?.email) {
+          return c.json({ error: "that customer has no email address" }, 400);
+        }
+
+        const token = await ensurePortalToken(contact);
+        const base =
+          process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
+        const [org] = await db
+          .select({ name: schema.organizations.name })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, orgId))
+          .limit(1);
+
+        try {
+          await emailAdapter().send({
+            to: contact.email,
+            ...invoiceEmail({
+              number: invoice.number,
+              totalCents: invoice.totalCents,
+              currency: invoice.currency,
+              dueDate: invoice.dueDate,
+              businessName: org?.name,
+              portalUrl: `${base}/portal/${token}`,
+            }),
+          });
+        } catch (err) {
+          console.error("[invoicing] sending the invoice failed", err);
+          return c.json({ error: "could not send it" }, 502);
+        }
+
+        // What was sent, and when, belongs on the customer's timeline: it is
+        // the answer to "did we ever actually invoice them?"
+        await db.insert(schema.activities).values({
+          organizationId: orgId,
+          contactId: contact.id,
+          type: "note",
+          body: `Sent invoice ${invoice.number} to ${contact.email}`,
+          occurredAt: new Date(),
+        });
+
+        return c.json({ sent: true, to: contact.email });
+      },
+    );
 
     /**
      * The customer accepting a quote.

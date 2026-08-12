@@ -380,6 +380,126 @@ const ledgerFor = async (source: string) => {
     .where(eq(schema.journalLines.entryId, entry.id));
 };
 
+test("sending an invoice records it on the timeline and links the portal", async () => {
+  // The template existed and nothing called it: a business could raise an
+  // invoice and had no way to deliver it.
+  const created = await app.request("http://localhost/api/invoices", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "Sent work",
+          quantity: 1,
+          unitPrice: 15000,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+  const { invoice } = (await created.json()) as {
+    invoice: { id: string; number: string };
+  };
+
+  const res = await app.request(
+    `http://localhost/api/invoices/${invoice.id}/send`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { sent: boolean; to: string };
+  expect(body.sent).toBe(true);
+
+  // sending mints the customer's portal token if they had none
+  const [contact] = await db
+    .select()
+    .from(schema.contacts)
+    .where(eq(schema.contacts.id, contactId));
+  expect(contact?.portalToken).toBeTruthy();
+
+  const timeline = await db
+    .select()
+    .from(schema.activities)
+    .where(eq(schema.activities.contactId, contactId));
+  expect(
+    timeline.some((a) => a.body?.includes(`Sent invoice ${invoice.number}`)),
+  ).toBe(true);
+});
+
+test("an invoice with no customer, or a customer with no address, cannot be sent", async () => {
+  const [orphan] = await db
+    .insert(schema.invoices)
+    .values({
+      organizationId: orgId,
+      number: `INV-ORPHAN-${suffix}`,
+      status: "open",
+      currency: "USD",
+      subtotalCents: 1000,
+      taxCents: 0,
+      totalCents: 1000,
+    })
+    .returning();
+  expect(
+    (
+      await app.request(`http://localhost/api/invoices/${orphan?.id}/send`, {
+        method: "POST",
+        headers,
+      })
+    ).status,
+  ).toBe(400);
+
+  const [silent] = await db
+    .insert(schema.contacts)
+    .values({ organizationId: orgId, name: "No address" })
+    .returning();
+  const [theirs] = await db
+    .insert(schema.invoices)
+    .values({
+      organizationId: orgId,
+      contactId: silent?.id,
+      number: `INV-SILENT-${suffix}`,
+      status: "open",
+      currency: "USD",
+      subtotalCents: 1000,
+      taxCents: 0,
+      totalCents: 1000,
+    })
+    .returning();
+  expect(
+    (
+      await app.request(`http://localhost/api/invoices/${theirs?.id}/send`, {
+        method: "POST",
+        headers,
+      })
+    ).status,
+  ).toBe(400);
+});
+
+test("sending another organization's invoice is a 404", async () => {
+  const [foreign] = await db
+    .insert(schema.invoices)
+    .values({
+      organizationId: `org_other_${suffix}`,
+      number: `INV-FOREIGN-${suffix}`,
+      status: "open",
+      currency: "USD",
+      subtotalCents: 1000,
+      taxCents: 0,
+      totalCents: 1000,
+    })
+    .returning();
+
+  const res = await app.request(
+    `http://localhost/api/invoices/${foreign?.id}/send`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(404);
+  await db
+    .delete(schema.invoices)
+    .where(eq(schema.invoices.id, foreign?.id ?? ""));
+});
+
 test("a customer accepting a quote raises an invoice that reaches the books", async () => {
   // Converting a quote used to create the invoice and post nothing, so the
   // revenue existed on the document and nowhere in the accounts.
