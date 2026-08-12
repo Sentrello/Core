@@ -17,6 +17,7 @@ export const statement = {
   // be extended at runtime by a bundle.
   time: ["read", "create", "update", "delete", "approve"],
   scheduling: ["read", "create", "update", "delete"],
+  shop: ["read", "create", "update", "delete"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -32,6 +33,7 @@ export const admin = ac.newRole({
   settings: ["read", "update"],
   time: ["read", "create", "update", "delete", "approve"],
   scheduling: ["read", "create", "update", "delete"],
+  shop: ["read", "create", "update", "delete"],
 });
 
 export const accounting = ac.newRole({
@@ -44,6 +46,8 @@ export const accounting = ac.newRole({
   // with the people who invoice
   time: ["read", "approve"],
   scheduling: ["read"],
+  // whoever does the books needs to see what was sold and refunded
+  shop: ["read"],
 });
 
 export const staff = ac.newRole({
@@ -55,6 +59,8 @@ export const staff = ac.newRole({
   time: ["read", "create", "update"],
   // staff manage the diary; only an admin reshapes the business hours
   scheduling: ["read", "create", "update"],
+  // staff can see orders; prices and products are the owner's business
+  shop: ["read"],
 });
 
 // External portal users — RBAC is intentionally tiny; row-level scoping to their
