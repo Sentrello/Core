@@ -35,6 +35,9 @@
     },
     {
       "path": "../../packages/modules-free/settings"
+    },
+    {
+      "path": "../../packages/email"
     }
   ]
 }

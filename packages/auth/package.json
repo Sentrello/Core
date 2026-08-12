@@ -7,13 +7,15 @@
     "./hono": "./src/hono.ts",
     "./bootstrap": "./src/bootstrap.ts",
     "./permissions": "./src/permissions.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./reset-password": "./src/reset-password.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.0",
     "@sentrello/db": "*",
     "@sentrello/module-sdk": "*",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "@sentrello/email": "*"
   },
   "devDependencies": {
     "drizzle-orm": "^0.45.0"

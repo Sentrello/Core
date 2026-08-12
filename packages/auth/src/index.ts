@@ -1,5 +1,7 @@
 import { db, schema } from "@sentrello/db";
 import { asc, eq } from "@sentrello/db/orm";
+import { emailAdapter } from "@sentrello/email";
+import { passwordResetEmail } from "@sentrello/email/templates";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
@@ -21,7 +23,28 @@ export const auth = betterAuth({
   baseURL: process.env.SENTRELLO_BASE_URL ?? "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, { provider: "pg", schema }),
-  emailAndPassword: { enabled: true, requireEmailVerification: false }, // flip on once email is wired
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: false, // flip on once email is wired
+    /**
+     * Without this an owner who forgets their password has no way back in
+     * except editing the database — and on a self-hosted instance they are
+     * usually the only administrator, so there is nobody to ask.
+     *
+     * An hour, not a day: the link is a bearer credential sitting in an inbox.
+     * Instances with no mail configured cannot use this at all, which is what
+     * `sentrello reset-password` on the host is for.
+     */
+    resetPasswordTokenExpiresIn: 60 * 60,
+    sendResetPassword: async ({ user, url }) => {
+      const mail = passwordResetEmail({ url, expiresInMinutes: 60 });
+      await emailAdapter().send({
+        to: user.email,
+        subject: mail.subject,
+        html: mail.html,
+      });
+    },
+  },
   ...(google ? { socialProviders: google } : {}),
   // Closed by default: first-run owner, invitation, or an explicit opt-in.
   hooks: { before: signUpGuard },

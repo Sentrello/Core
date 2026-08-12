@@ -64,6 +64,18 @@ class NoopAdapter implements EmailAdapter {
   }
 }
 
+/**
+ * Whether this instance can actually send mail.
+ *
+ * A self-hosted instance may have no mail configured at all, and a password
+ * reset that silently posts into a NoopAdapter would leave the only
+ * administrator locked out with a screen telling them to check their inbox.
+ * The sign-in page asks this so it can offer the truth instead.
+ */
+export function mailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY || process.env.SMTP_HOST);
+}
+
 export function emailAdapter(): EmailAdapter {
   if (process.env.RESEND_API_KEY) {
     return new ResendAdapter(

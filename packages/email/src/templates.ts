@@ -159,3 +159,26 @@ export function overdueReminderEmail(args: {
     ),
   };
 }
+
+/**
+ * The one email a locked-out owner needs.
+ *
+ * Deliberately plain about the deadline and about not having asked: someone
+ * who did not request this needs to know whether to worry, and someone who did
+ * needs to know how long they have before trying again.
+ */
+export function passwordResetEmail(args: {
+  url: string;
+  expiresInMinutes: number;
+}) {
+  return {
+    subject: "Reset your Sentrello password",
+    html: layout(
+      "Reset your password",
+      `<p><a href="${escapeHtml(args.url)}">Choose a new password</a></p>
+<p style="color:#666;font-size:12px">The link works once and expires in
+${args.expiresInMinutes} minutes. If you did not ask for this, nothing has
+changed and you can ignore this email — your current password still works.</p>`,
+    ),
+  };
+}

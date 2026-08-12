@@ -4,6 +4,7 @@ import { type Meta, api } from "./lib/api";
 import { authClient, useSession } from "./lib/auth";
 import { Bookkeeping } from "./routes/bookkeeping";
 import { Contacts } from "./routes/contacts";
+import { ResetPassword } from "./routes/forgot-password";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
@@ -58,6 +59,10 @@ export default function App() {
   const bootstrap = useBootstrap();
   const nav = data?.nav ?? [];
   const [active, setActive] = useState("crm");
+
+  // The emailed reset link lands here with no session, and must be reachable
+  // before the sign-in form or the bootstrap screen takes the page.
+  if (window.location.pathname === "/reset-password") return <ResetPassword />;
 
   if (session.isPending || bootstrap.isLoading) return null;
   // A fresh instance has no owner yet: claim it before anything else.

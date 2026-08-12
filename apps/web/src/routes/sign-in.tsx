@@ -1,7 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { authClient } from "../lib/auth";
+import { ForgotPassword } from "./forgot-password";
 
 export function SignIn() {
+  const [forgot, setForgot] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,6 +17,8 @@ export function SignIn() {
     setBusy(false);
     if (error) setError(error.message ?? "Could not sign in");
   }
+
+  if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />;
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
@@ -71,6 +75,15 @@ export function SignIn() {
           }}
         >
           {busy ? "Signing in…" : "Sign in"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setForgot(true)}
+          className="w-full text-sm underline underline-offset-2"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Forgot your password?
         </button>
       </form>
     </div>

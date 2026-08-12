@@ -10,8 +10,44 @@ export type Session = NonNullable<
 /** The Hono environment every Sentrello route runs in. */
 export type AppEnv = SentrelloEnv;
 
+/**
+ * "Invalid origin" is the right refusal and a useless explanation.
+ *
+ * Better Auth rejects a sign-in whose Origin is not the configured baseURL,
+ * which is correct — it is what stops another site posting credentials here.
+ * But the person reading it is almost always the owner of a self-hosted
+ * instance who reached their own app by a name `SENTRELLO_BASE_URL` does not
+ * mention: an IP, `localhost`, `www.` where the setting has the bare domain.
+ * Two words with no pointer to the setting turns a one-line fix into a support
+ * conversation, so the reply names the setting, what it is, and what was
+ * actually asked for.
+ *
+ * Exported for its own test: Better Auth skips the origin check entirely under
+ * NODE_ENV=test, so the suite cannot reach this through the handler. The
+ * rewriting is tested here and the refusal itself verified against a running
+ * instance by hand.
+ */
+export async function explainOrigin(res: Response, origin: string | undefined) {
+  if (res.status !== 403) return res;
+
+  const body = await res.clone().text();
+  if (!body.includes("Invalid origin")) return res;
+
+  const configured =
+    process.env.SENTRELLO_BASE_URL ?? "http://localhost:3000 (the default)";
+  return Response.json(
+    {
+      message: `This instance only accepts sign-ins from ${configured}, and this request came from ${origin ?? "an unknown origin"}. Set SENTRELLO_BASE_URL to the address people actually use to reach it, then restart.`,
+      code: "INVALID_ORIGIN",
+    },
+    { status: 403, headers: res.headers },
+  );
+}
+
 export function mountAuth(app: Hono<AppEnv>) {
-  app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  app.on(["POST", "GET"], "/api/auth/*", async (c) =>
+    explainOrigin(await auth.handler(c.req.raw), c.req.header("origin")),
+  );
 }
 
 /** Route guard: requires a session, attaches it to context. */

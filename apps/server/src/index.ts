@@ -5,6 +5,7 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { runModuleMigrations } from "@sentrello/db/module-migrations";
+import { mailConfigured } from "@sentrello/email";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
 import crm from "@sentrello/module-crm";
@@ -78,6 +79,16 @@ app.get("/healthz", (c) =>
 const uiModules = serveModuleUi(app, modules, loaded);
 
 app.get("/api/_meta", (c) => c.json({ nav, loaded, ui: uiModules }));
+
+/**
+ * What the sign-in page needs before anyone has signed in.
+ *
+ * Only whether mail works, never how it is configured. A password reset on an
+ * instance with no mail set up would tell the only administrator to check an
+ * inbox nothing will arrive in, so the page has to know in advance to offer
+ * the host command instead.
+ */
+app.get("/api/_signin", (c) => c.json({ mailConfigured: mailConfigured() }));
 
 /**
  * What this instance is licensed for.
