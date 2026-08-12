@@ -11,7 +11,11 @@ import {
 } from "@sentrello/db/ledger";
 import { MoneyError, invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
-import { contactByPortalToken, ensurePortalToken } from "@sentrello/db/portal";
+import {
+  businessIdentity,
+  contactByPortalToken,
+  ensurePortalToken,
+} from "@sentrello/db/portal";
 import { emailAdapter } from "@sentrello/email";
 import {
   invoiceEmail,
@@ -60,11 +64,7 @@ async function sendReceipt(
 
     const token = await ensurePortalToken(contact);
     const base = process.env.SENTRELLO_BASE_URL ?? new URL(requestUrl).origin;
-    const [org] = await db
-      .select({ name: schema.organizations.name })
-      .from(schema.organizations)
-      .where(eq(schema.organizations.id, orgId))
-      .limit(1);
+    const business = await businessIdentity(orgId);
 
     await emailAdapter().send({
       to: contact.email,
@@ -73,7 +73,8 @@ async function sendReceipt(
         amountCents,
         currency: invoice.currency,
         balanceCents,
-        businessName: org?.name,
+        businessName: business.name,
+        business,
         portalUrl: `${base}/portal/${token}`,
       }),
     });
@@ -378,6 +379,7 @@ export default defineModule({
               totalCents: quote.totalCents,
               currency: quote.currency,
               businessName: org?.name,
+              business: await businessIdentity(orgId),
               portalUrl: `${base}/portal/${token}`,
             }),
           });
@@ -813,6 +815,9 @@ export default defineModule({
               currency: invoice.currency,
               dueDate: invoice.dueDate,
               businessName: org?.name,
+              // The copy the customer keeps: it carries the seller's address
+              // and how to pay, as the portal page does.
+              business: await businessIdentity(orgId),
               portalUrl: `${base}/portal/${token}`,
             }),
           });

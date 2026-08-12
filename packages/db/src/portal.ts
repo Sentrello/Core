@@ -59,3 +59,28 @@ export async function ensurePortalToken(
     .where(and(eq(schema.contacts.id, contact.id)));
   return token;
 }
+
+/**
+ * The seller's own details, for a document a customer keeps.
+ *
+ * Lives beside the portal helpers rather than in a module because four places
+ * send customer-facing mail — the free invoicing module, the overdue job, and
+ * Pro's receipts — and a bundle may only import the small set of packages the
+ * container links in. One reader means an invoice email and the portal page
+ * cannot disagree about who the business is.
+ */
+export async function businessIdentity(orgId: string) {
+  const [org] = await db
+    .select()
+    .from(schema.organizations)
+    .where(eq(schema.organizations.id, orgId))
+    .limit(1);
+
+  return {
+    name: org?.name ?? "",
+    address: org?.address,
+    taxId: org?.taxId,
+    taxIdLabel: org?.taxIdLabel,
+    paymentInstructions: org?.paymentInstructions,
+  };
+}

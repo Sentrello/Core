@@ -24,10 +24,59 @@ export function formatMoney(cents: number, currency = "USD"): string {
   );
 }
 
-function layout(title: string, body: string): string {
+/**
+ * Who the business is, as it must appear on a document a customer keeps.
+ *
+ * An invoice email is often the only copy a customer files, so it carries the
+ * same identity as the portal page: the seller's address, because an invoice
+ * without one is not a valid document in the UK or the EU, and how to pay,
+ * because a business paid by transfer otherwise fields "where do I send this?"
+ * on every invoice it raises.
+ */
+export interface BusinessIdentity {
+  name: string;
+  address?: string | null;
+  taxId?: string | null;
+  taxIdLabel?: string | null;
+  paymentInstructions?: string | null;
+}
+
+const lines = (value: string) =>
+  value
+    .split("\n")
+    .map((l) => escapeHtml(l.trim()))
+    .filter(Boolean)
+    .join("<br>");
+
+function sellerFooter(b?: BusinessIdentity): string {
+  if (!b) return "";
+  const parts: string[] = [];
+  if (b.address) parts.push(lines(b.address));
+  if (b.taxId) {
+    parts.push(
+      `${escapeHtml(b.taxIdLabel?.trim() || "Tax number")}: ${escapeHtml(b.taxId)}`,
+    );
+  }
+  const pay = b.paymentInstructions
+    ? `<p style="color:#666;font-size:12px;margin:12px 0 0"><strong>How to pay</strong><br>${lines(b.paymentInstructions)}</p>`
+    : "";
+  if (parts.length === 0 && !pay) return "";
+
+  return `<hr style="border:0;border-top:1px solid #e4e4e7;margin:24px 0 12px">
+<p style="color:#666;font-size:12px;margin:0"><strong>${escapeHtml(b.name)}</strong>${
+    parts.length ? `<br>${parts.join("<br>")}` : ""
+  }</p>${pay}`;
+}
+
+function layout(
+  title: string,
+  body: string,
+  business?: BusinessIdentity,
+): string {
   return `<!doctype html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111">
 <h1 style="font-size:18px">${escapeHtml(title)}</h1>
 ${body}
+${sellerFooter(business)}
 <p style="color:#666;font-size:12px">Sent by Sentrello</p>
 </body></html>`;
 }
@@ -50,6 +99,8 @@ export function invoiceEmail(args: {
   businessName?: string;
   /** the customer's own page, where they can see and settle this */
   portalUrl?: string;
+  /** The seller, for the foot of the document. */
+  business?: BusinessIdentity;
 }) {
   const due = args.dueDate
     ? `<p>Due ${escapeHtml(args.dueDate.toISOString().slice(0, 10))}.</p>`
@@ -68,6 +119,7 @@ like a bill in the post.</p>`
     html: layout(
       `Invoice ${args.number}`,
       `<p>Amount due: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${due}${link}`,
+      args.business,
     ),
   };
 }
@@ -78,6 +130,8 @@ export function quoteEmail(args: {
   currency: string;
   businessName?: string;
   portalUrl?: string;
+  /** The seller, for the foot of the document. */
+  business?: BusinessIdentity;
 }) {
   const link = args.portalUrl
     ? `<p><a href="${escapeHtml(args.portalUrl)}">Read and accept this quote</a></p>
@@ -91,6 +145,7 @@ Nothing is charged until you pay it.</p>`
     html: layout(
       `Quote ${args.number}`,
       `<p>Total: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${link}`,
+      args.business,
     ),
   };
 }
@@ -102,6 +157,8 @@ export function receiptEmail(args: {
   balanceCents: number;
   businessName?: string;
   portalUrl?: string;
+  /** The seller, for the foot of the document. */
+  business?: BusinessIdentity;
 }) {
   // A part payment leaves a balance, and saying so here saves the customer
   // wondering whether the rest was forgotten.
@@ -121,6 +178,7 @@ export function receiptEmail(args: {
 towards invoice ${escapeHtml(args.number)}${
         args.businessName ? ` from ${escapeHtml(args.businessName)}` : ""
       }.</p>${remaining}${link}`,
+      args.business,
     ),
   };
 }
@@ -150,12 +208,15 @@ export function overdueReminderEmail(args: {
   number: string;
   balanceDueCents: number;
   currency: string;
+  /** The seller, for the foot of the document. */
+  business?: BusinessIdentity;
 }) {
   return {
     subject: `Invoice ${args.number} is overdue`,
     html: layout(
       `Invoice ${args.number} is overdue`,
       `<p>Outstanding balance: <strong>${formatMoney(args.balanceDueCents, args.currency)}</strong></p>`,
+      args.business,
     ),
   };
 }

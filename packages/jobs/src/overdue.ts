@@ -1,5 +1,6 @@
 import { db, schema } from "@sentrello/db";
 import { invoiceStatus } from "@sentrello/db/money";
+import { businessIdentity } from "@sentrello/db/portal";
 import { emailAdapter } from "@sentrello/email";
 import { overdueReminderEmail } from "@sentrello/email/templates";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
@@ -49,10 +50,13 @@ export async function sendOverdueReminders(now = new Date()) {
       : [];
     if (!contact?.email) continue;
 
+    // The chase most likely to be forwarded to somebody's accounts department,
+    // where "who is this and where do we pay them" is the whole question.
     const mail = overdueReminderEmail({
       number: invoice.number,
       balanceDueCents: balanceDue,
       currency: invoice.currency,
+      business: await businessIdentity(invoice.organizationId),
     });
     await mailer.send({ to: contact.email, ...mail });
 
