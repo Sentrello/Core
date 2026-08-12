@@ -9,7 +9,8 @@
     "./numbering": "./src/numbering.ts",
     "./orm": "./src/orm.ts",
     "./ssl": "./src/ssl.ts",
-    "./module-migrations": "./src/module-migrations.ts"
+    "./module-migrations": "./src/module-migrations.ts",
+    "./portal": "./src/portal.ts"
   },
   "scripts": {
     "migrate": "bun run src/migrate.ts"

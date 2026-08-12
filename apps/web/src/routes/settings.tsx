@@ -21,6 +21,7 @@ interface LicenseResponse {
   tokenExpiresAt: string | null;
   graceUntil: string | null;
   modulesLoaded: string[];
+  failedBundles: { name: string; reason: string }[];
 }
 
 interface SettingsResponse {
@@ -196,6 +197,27 @@ export function Settings() {
         ) : null}
         <Copyable label="Webhook for the shop" value={paypal.shopWebhookUrl} />
       </Card>
+
+      {licence.data?.failedBundles?.length ? (
+        // Paid features vanishing without explanation is the worst way to
+        // find out about this, so it goes at the top and stays red.
+        <Card>
+          <p className="font-medium" style={{ color: "var(--color-danger)" }}>
+            A paid module did not start
+          </p>
+          {licence.data.failedBundles.map((f) => (
+            <p key={f.name} className="mt-1 text-sm">
+              <strong>{f.name}</strong> — {f.reason}
+            </p>
+          ))}
+          <p className="mt-2 text-sm" style={muted}>
+            Everything that module provides is unavailable until this is fixed.
+            Reinstalling it with <code>sentrello update</code> is the usual
+            remedy; if it persists, the release is at fault rather than your
+            instance.
+          </p>
+        </Card>
+      ) : null}
 
       <Card>
         <div className="flex items-baseline justify-between">

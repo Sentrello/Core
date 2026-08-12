@@ -159,6 +159,9 @@ test("/healthz boots and reports Free when no token is present", async () => {
     tier: "free",
     license_valid: false,
     modules_loaded: ["crm", "forms", "invoicing", "bookkeeping", "settings"],
+    // A bundle that will not load is reported rather than only logged: it
+    // takes every feature of that module with it.
+    modules_failed: [],
   });
 });
 

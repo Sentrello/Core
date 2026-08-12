@@ -11,6 +11,7 @@ import {
 } from "@sentrello/db/ledger";
 import { invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
+import { contactByPortalToken, ensurePortalToken } from "@sentrello/db/portal";
 import { emailAdapter } from "@sentrello/email";
 import {
   invoiceEmail,
@@ -82,34 +83,6 @@ async function sendReceipt(
 }
 
 /**
- * The customer's portal token, minted on first need.
- *
- * Every path that wants to link a customer to their own page goes through
- * here, so a token is never created two different ways.
- */
-async function ensurePortalToken(
-  contact: { id: string; portalToken: string | null },
-  rotate = false,
-): Promise<string> {
-  if (contact.portalToken && !rotate) return contact.portalToken;
-  const token = newPortalToken();
-  await db
-    .update(schema.contacts)
-    .set({ portalToken: token })
-    .where(eq(schema.contacts.id, contact.id));
-  return token;
-}
-
-/** 32 random bytes, URL-safe: the link is the whole credential. */
-function newPortalToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-/**
  * The entry raising an invoice makes: Dr Accounts Receivable, Cr Income, plus
  * any tax. Shared so every path that issues an invoice posts the same thing.
  */
@@ -140,34 +113,6 @@ async function postInvoiceIssued(
         : []),
     ],
   );
-}
-
-/**
- * Finds the customer a portal token belongs to.
- *
- * Exported because Pro adds paying to this page and must answer the same
- * question. Two implementations of "who is this token" is one too many.
- */
-export async function contactByPortalToken(token: string) {
-  if (token.length < 20) return null;
-  const candidates = await db
-    .select()
-    .from(schema.contacts)
-    .where(isNotNull(schema.contacts.portalToken));
-  return (
-    candidates.find((row) => tokenMatches(token, row.portalToken ?? "")) ?? null
-  );
-}
-
-/** Constant time: a token check that leaks timing is not a check. */
-function tokenMatches(supplied: string, expected: string): boolean {
-  const a = new TextEncoder().encode(supplied);
-  const b = new TextEncoder().encode(expected);
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1)
-    diff |= (a[i] as number) ^ (b[i] as number);
-  return diff === 0;
 }
 
 export default defineModule({

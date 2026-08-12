@@ -16,7 +16,7 @@ import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
 import { serveModuleUi } from "./module-ui";
-import { discoverOptionalModules } from "./optional-modules";
+import { discoverOptionalModules, failedBundles } from "./optional-modules";
 import { serveWeb } from "./static";
 
 const app = new Hono<SentrelloEnv>();
@@ -60,6 +60,9 @@ app.get("/healthz", (c) =>
     tier: state.claims?.tier ?? "free",
     license_valid: state.valid,
     modules_loaded: loaded,
+    // Named, not detailed: enough for monitoring to alert on, without
+    // publishing an error message to anyone who can reach /healthz.
+    modules_failed: failedBundles.map((f) => f.name),
   }),
 );
 
@@ -100,6 +103,8 @@ app.get(
       tokenExpiresAt: expiresAt,
       graceUntil: claims?.grace_until ?? null,
       modulesLoaded: loaded,
+      // Behind the settings permission, so this one carries the reason.
+      failedBundles,
     });
   },
 );

@@ -41,6 +41,17 @@ function isModule(value: unknown): value is SentrelloModule {
  * own uid. The bundles directory is theirs and always writable, so the host
  * reads from there instead.
  */
+/**
+ * Bundles that were installed but would not load.
+ *
+ * A bundle that throws on import takes every one of its features with it —
+ * a customer paying for Pro loses deals, reports, bank import and recurring
+ * invoices at once. That used to be a warning in a log nobody reads, which is
+ * how a broken import survived several releases. It is now reported by
+ * /healthz and on the settings screen.
+ */
+export const failedBundles: { name: string; reason: string }[] = [];
+
 async function discoverFromBundlesDir(dir: string): Promise<SentrelloModule[]> {
   const found: SentrelloModule[] = [];
   let entries: string[];
@@ -57,11 +68,15 @@ async function discoverFromBundlesDir(dir: string): Promise<SentrelloModule[]> {
       const mod: unknown = await import(`${dir}/${name}/src/index.ts`);
       const candidate = (mod as { default?: unknown }).default;
       if (isModule(candidate)) found.push(candidate);
-      else console.warn(`[modules] bundle ${name} has no valid default export`);
+      else {
+        const reason = "it has no valid default export";
+        failedBundles.push({ name, reason });
+        console.error(`[modules] bundle ${name} did not load: ${reason}`);
+      }
     } catch (err) {
-      console.warn(
-        `[modules] bundle ${name} could not be loaded: ${(err as Error).message}`,
-      );
+      const reason = (err as Error).message;
+      failedBundles.push({ name, reason });
+      console.error(`[modules] bundle ${name} did not load: ${reason}`);
     }
   }
   return found;
