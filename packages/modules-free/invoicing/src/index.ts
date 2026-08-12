@@ -11,6 +11,8 @@ import {
 } from "@sentrello/db/ledger";
 import { invoiceStatus, lineTotals } from "@sentrello/db/money";
 import { nextDocumentNumber } from "@sentrello/db/numbering";
+import { emailAdapter } from "@sentrello/email";
+import { portalLinkEmail } from "@sentrello/email/templates";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { portalPage } from "./portal";
@@ -354,7 +356,65 @@ export default defineModule({
 
         const base =
           process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
-        return c.json({ url: `${base}/portal/${token}` });
+        const url = `${base}/portal/${token}`;
+
+        // Sending is the point: a link the business has to copy out of a
+        // dialog and paste into their own email client is a link that stays
+        // in the dialog.
+        if (c.req.query("send") === "1") {
+          if (!contact.email) {
+            return c.json({ error: "this contact has no email address" }, 400);
+          }
+
+          const rows = await db
+            .select()
+            .from(schema.invoices)
+            .where(
+              and(
+                eq(schema.invoices.organizationId, orgId),
+                eq(schema.invoices.contactId, contact.id),
+              ),
+            );
+          const paid = await db
+            .select({
+              invoiceId: schema.payments.invoiceId,
+              amountCents: schema.payments.amountCents,
+            })
+            .from(schema.payments)
+            .where(eq(schema.payments.organizationId, orgId));
+
+          const outstandingCents = rows.reduce((sum, invoice) => {
+            const settled = paid
+              .filter((p) => p.invoiceId === invoice.id)
+              .reduce((n, p) => n + p.amountCents, 0);
+            return sum + Math.max(0, invoice.totalCents - settled);
+          }, 0);
+
+          const [org] = await db
+            .select({ name: schema.organizations.name })
+            .from(schema.organizations)
+            .where(eq(schema.organizations.id, orgId))
+            .limit(1);
+
+          try {
+            await emailAdapter().send({
+              to: contact.email,
+              ...portalLinkEmail({
+                businessName: org?.name ?? "Your supplier",
+                url,
+                outstandingCents,
+                currency: rows[0]?.currency,
+              }),
+            });
+          } catch (err) {
+            // The link exists either way; the business can still copy it.
+            console.error("[invoicing] portal link email failed", err);
+            return c.json({ url, sent: false }, 502);
+          }
+          return c.json({ url, sent: true });
+        }
+
+        return c.json({ url });
       },
     );
 

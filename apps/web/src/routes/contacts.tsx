@@ -69,17 +69,75 @@ export function Contacts() {
             : "People who fill in your forms or book with you land here automatically."}
         </Empty>
       ) : (
-        <Table headers={["Name", "Email", "Phone", "Type"]}>
+        <Table headers={["Name", "Email", "Phone", "Type", ""]}>
           {contacts.map((c) => (
             <Row key={c.id}>
               <td className="py-2 font-medium">{c.name}</td>
               <td>{c.email ?? "—"}</td>
               <td>{c.phone ?? "—"}</td>
               <td style={muted}>{c.kind}</td>
+              <td className="text-right">
+                <PortalLink contact={c} />
+              </td>
             </Row>
           ))}
         </Table>
       )}
+    </div>
+  );
+}
+
+/**
+ * The link a customer follows to see what they owe.
+ *
+ * Sending it is the default action, because a link the business has to copy
+ * out of a dialog and paste into their own email client is a link that stays
+ * in the dialog. Copying is there for the times email is not the channel.
+ */
+function PortalLink({ contact }: { contact: Contact }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const mint = useMutation({
+    mutationFn: (send: boolean) =>
+      api<{ url: string; sent?: boolean }>(
+        `/api/contacts/${contact.id}/portal-link${send ? "?send=1" : ""}`,
+        { method: "POST" },
+      ),
+    onSuccess: (data, send) => {
+      setUrl(data.url);
+      setSent(send && data.sent === true);
+    },
+  });
+
+  return (
+    <div className="text-right">
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="secondary"
+          onClick={() => mint.mutate(false)}
+          disabled={mint.isPending}
+        >
+          {url ? "Copy link" : "Portal link"}
+        </Button>
+        {contact.email ? (
+          <Button onClick={() => mint.mutate(true)} disabled={mint.isPending}>
+            {sent ? "Sent" : "Email it"}
+          </Button>
+        ) : null}
+      </div>
+      {url ? (
+        <button
+          type="button"
+          className="mt-1 block w-full truncate text-right text-xs underline"
+          style={muted}
+          onClick={() => navigator.clipboard?.writeText(url)}
+          title={url}
+        >
+          {url}
+        </button>
+      ) : null}
+      {mint.error ? <ErrorNote error={mint.error} /> : null}
     </div>
   );
 }

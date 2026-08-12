@@ -60,6 +60,27 @@ export function invoiceEmail(args: {
   };
 }
 
+export function portalLinkEmail(args: {
+  businessName: string;
+  url: string;
+  outstandingCents?: number;
+  currency?: string;
+}) {
+  const owed =
+    args.outstandingCents && args.outstandingCents > 0
+      ? `<p>Outstanding: <strong>${formatMoney(args.outstandingCents, args.currency)}</strong></p>`
+      : "";
+  return {
+    subject: `Your invoices from ${args.businessName}`,
+    html: layout(
+      `Your invoices from ${args.businessName}`,
+      `${owed}<p><a href="${escapeHtml(args.url)}">View your invoices</a></p>
+<p style="color:#666;font-size:12px">This link is private to you — treat it
+like a bill in the post. Anyone who has it can see the page.</p>`,
+    ),
+  };
+}
+
 export function overdueReminderEmail(args: {
   number: string;
   balanceDueCents: number;

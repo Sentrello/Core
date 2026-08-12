@@ -316,6 +316,29 @@ test("a guessed portal link is a 404, and rotating revokes the old one", async (
   expect((await app.request(`http://localhost${newPath}`)).status).toBe(200);
 });
 
+test("sending the link needs somewhere to send it", async () => {
+  const [noEmail] = await db
+    .insert(schema.contacts)
+    .values({ organizationId: orgId, name: "No address" })
+    .returning();
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${noEmail?.id}/portal-link?send=1`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(400);
+
+  // the link still exists — the business can copy it by hand
+  const copied = await app.request(
+    `http://localhost/api/contacts/${noEmail?.id}/portal-link`,
+    { method: "POST", headers },
+  );
+  expect(copied.status).toBe(200);
+  await db
+    .delete(schema.contacts)
+    .where(eq(schema.contacts.id, noEmail?.id ?? ""));
+});
+
 test("minting a link for another organization's contact is a 404", async () => {
   const [foreign] = await db
     .insert(schema.contacts)
