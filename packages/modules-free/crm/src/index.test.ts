@@ -152,3 +152,62 @@ test("delete removes only this organization's row", async () => {
   );
   expect(again.status).toBe(404);
 });
+
+test("a customer with invoices cannot be deleted", async () => {
+  // Nothing is protected by a foreign key, so the delete would succeed and
+  // leave the invoice naming nobody while the ledger still holds the money.
+  const [contact] = await db
+    .insert(schema.contacts)
+    .values({ organizationId: orgId, name: "Has history" })
+    .returning();
+  await db.insert(schema.invoices).values({
+    organizationId: orgId,
+    contactId: contact?.id,
+    number: `INV-GUARD-${suffix}`,
+    status: "open",
+    currency: "USD",
+    subtotalCents: 1000,
+    taxCents: 0,
+    totalCents: 1000,
+  });
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${contact?.id}`,
+    { method: "DELETE", headers },
+  );
+  expect(res.status).toBe(409);
+  const body = (await res.json()) as { error: string };
+  expect(body.error).toContain("1 invoice");
+
+  const [still] = await db
+    .select()
+    .from(schema.contacts)
+    .where(eq(schema.contacts.id, contact?.id ?? ""));
+  expect(still).toBeDefined();
+
+  await db
+    .delete(schema.invoices)
+    .where(eq(schema.invoices.contactId, contact?.id ?? ""));
+  await db
+    .delete(schema.contacts)
+    .where(eq(schema.contacts.id, contact?.id ?? ""));
+});
+
+test("a customer with no history deletes cleanly", async () => {
+  const [contact] = await db
+    .insert(schema.contacts)
+    .values({ organizationId: orgId, name: "Mistyped entry" })
+    .returning();
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${contact?.id}`,
+    { method: "DELETE", headers },
+  );
+  expect(res.status).toBe(200);
+
+  const rows = await db
+    .select()
+    .from(schema.contacts)
+    .where(eq(schema.contacts.id, contact?.id ?? ""));
+  expect(rows).toHaveLength(0);
+});

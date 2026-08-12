@@ -2,6 +2,15 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * What the server said, when it said anything.
+     *
+     * The server often knows why — "this customer has 3 invoices" — and that
+     * sentence is more use to someone than any status code. Kept separate so
+     * a screen can choose to show it rather than being handed a raw message
+     * meant for a log.
+     */
+    readonly serverMessage?: string,
   ) {
     super(message);
   }
@@ -13,7 +22,14 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "content-type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
-    throw new ApiError(res.status, `${init?.method ?? "GET"} ${path} failed`);
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new ApiError(
+      res.status,
+      `${init?.method ?? "GET"} ${path} failed`,
+      typeof body?.error === "string" ? body.error : undefined,
+    );
   }
   return (await res.json()) as T;
 }

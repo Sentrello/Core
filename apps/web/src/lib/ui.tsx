@@ -201,12 +201,19 @@ export function ErrorNote({ error }: { error: unknown }) {
     error && typeof error === "object" && "status" in error
       ? (error as { status: number }).status
       : 0;
+  // The server's own sentence beats anything guessed from a status code —
+  // except for 401 and 403, where the useful advice is about the person
+  // rather than the request.
+  const fromServer =
+    error && typeof error === "object" && "serverMessage" in error
+      ? (error as { serverMessage?: string }).serverMessage
+      : undefined;
   const message =
     status === 403
       ? "Your role does not allow this."
       : status === 401
         ? "Your session has expired. Sign in again."
-        : "Something went wrong. Try again.";
+        : (fromServer ?? "Something went wrong. Try again.");
   return (
     <p className="text-sm" style={{ color: "var(--color-danger)" }}>
       {message}

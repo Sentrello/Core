@@ -18,6 +18,7 @@ import {
 export function Contacts() {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   const { data, isLoading, error } = useQuery({
@@ -70,19 +71,129 @@ export function Contacts() {
         </Empty>
       ) : (
         <Table headers={["Name", "Email", "Phone", "Type", ""]}>
-          {contacts.map((c) => (
-            <Row key={c.id}>
-              <td className="py-2 font-medium">{c.name}</td>
-              <td>{c.email ?? "—"}</td>
-              <td>{c.phone ?? "—"}</td>
-              <td style={muted}>{c.kind}</td>
-              <td className="text-right">
-                <PortalLink contact={c} />
-              </td>
-            </Row>
-          ))}
+          {contacts.map((c) =>
+            editing === c.id ? (
+              <Row key={c.id}>
+                <td colSpan={5} className="py-2">
+                  <EditContact
+                    contact={c}
+                    onDone={() => {
+                      setEditing(null);
+                      qc.invalidateQueries({ queryKey: ["contacts"] });
+                    }}
+                  />
+                </td>
+              </Row>
+            ) : (
+              <Row key={c.id}>
+                <td className="py-2 font-medium">
+                  <button
+                    type="button"
+                    className="underline-offset-2 hover:underline"
+                    onClick={() => setEditing(c.id)}
+                    title="Edit"
+                  >
+                    {c.name}
+                  </button>
+                </td>
+                <td>{c.email ?? "—"}</td>
+                <td>{c.phone ?? "—"}</td>
+                <td style={muted}>{c.kind}</td>
+                <td className="text-right">
+                  <PortalLink contact={c} />
+                </td>
+              </Row>
+            ),
+          )}
         </Table>
       )}
+    </div>
+  );
+}
+
+/**
+ * Editing a customer in place.
+ *
+ * Deleting is here rather than on the row because it belongs next to the
+ * details you are looking at while deciding — and because the server refuses
+ * to delete a customer with invoices, this has to be able to show that reason
+ * rather than a generic failure.
+ */
+function EditContact({
+  contact,
+  onDone,
+}: {
+  contact: Contact;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(contact.name);
+  const [email, setEmail] = useState(contact.email ?? "");
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [confirming, setConfirming] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/api/contacts/${contact.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          email: email || null,
+          phone: phone || null,
+        }),
+      }),
+    onSuccess: onDone,
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api(`/api/contacts/${contact.id}`, { method: "DELETE" }),
+    onSuccess: onDone,
+  });
+
+  return (
+    <div className="space-y-2">
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto_auto]">
+        <Field label="Name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+        <Field label="Phone">
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </Field>
+        <div className="flex items-end gap-2">
+          <Button
+            onClick={() => save.mutate()}
+            disabled={save.isPending || !name.trim()}
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+          <Button variant="secondary" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+        <div className="flex items-end">
+          {confirming ? (
+            <Button
+              variant="danger"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+            >
+              {remove.isPending ? "Deleting…" : "Really delete"}
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={() => setConfirming(true)}>
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
+      {save.error ? <ErrorNote error={save.error} /> : null}
+      {remove.error ? <ErrorNote error={remove.error} /> : null}
     </div>
   );
 }

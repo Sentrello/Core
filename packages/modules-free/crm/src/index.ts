@@ -17,6 +17,11 @@ function crud<T extends keyof typeof tables>(
   resource: T,
 ) {
   const { table, path, singular, permission } = tables[resource];
+  const blocksDelete = (
+    tables[resource] as {
+      blocksDelete?: (orgId: string, id: string) => Promise<string | null>;
+    }
+  ).blocksDelete;
 
   ctx.app.get(
     `/api/${path}`,
@@ -74,6 +79,15 @@ function crud<T extends keyof typeof tables>(
     requirePermission({ [permission]: ["delete"] }),
     async (c) => {
       const orgId = activeOrganizationId(c.get("session"));
+
+      // Nothing here is protected by a foreign key, so a delete that should be
+      // refused would instead succeed and quietly orphan the rows pointing at
+      // it — an invoice with no customer, a portal link that stops working.
+      if (blocksDelete) {
+        const reason = await blocksDelete(orgId, c.req.param("id"));
+        if (reason) return c.json({ error: reason }, 409);
+      }
+
       const [row] = await db
         .delete(table)
         .where(
@@ -92,6 +106,48 @@ const tables = {
     path: "contacts",
     singular: "contact",
     permission: "crm",
+    /**
+     * A customer with financial history is not deletable.
+     *
+     * Their invoices would keep working but stop naming anyone, and the ledger
+     * would still carry the money — the business would be left with revenue it
+     * cannot attribute. Refusing is recoverable; deleting is not.
+     */
+    async blocksDelete(orgId: string, id: string) {
+      const [invoices, quotes] = await Promise.all([
+        db
+          .select({ id: schema.invoices.id })
+          .from(schema.invoices)
+          .where(
+            and(
+              eq(schema.invoices.organizationId, orgId),
+              eq(schema.invoices.contactId, id),
+            ),
+          ),
+        db
+          .select({ id: schema.quotes.id })
+          .from(schema.quotes)
+          .where(
+            and(
+              eq(schema.quotes.organizationId, orgId),
+              eq(schema.quotes.contactId, id),
+            ),
+          ),
+      ]);
+
+      const parts: string[] = [];
+      if (invoices.length) {
+        parts.push(
+          `${invoices.length} invoice${invoices.length > 1 ? "s" : ""}`,
+        );
+      }
+      if (quotes.length) {
+        parts.push(`${quotes.length} quote${quotes.length > 1 ? "s" : ""}`);
+      }
+      return parts.length
+        ? `This customer has ${parts.join(" and ")}. Deleting them would leave those without a customer.`
+        : null;
+    },
   },
   companies: {
     table: schema.companies,
