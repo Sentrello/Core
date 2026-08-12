@@ -54,9 +54,9 @@ td { border-bottom:1px solid var(--line); padding:.7rem 0; }
 .owed { font-size:1.25rem; font-weight:600; margin:1.5rem 0 0; }
 .paid { color:#1f7a4d; } .due { color:#a16207; } .over { color:#b91c1c; }
 .muted { color:var(--muted); font-size:.875rem; }
-a.pay { display:inline-block; margin-top:1.5rem; padding:.6rem 1.1rem;
-  background:#2f8f8a; color:#fff; border-radius:.375rem; text-decoration:none;
-  font-weight:600; }
+button.pay { font:inherit; font-weight:600; padding:.4rem .9rem; border:0;
+  border-radius:.375rem; background:#2f8f8a; color:#fff; cursor:pointer; }
+form { margin:0; }
 `;
 
 export interface PortalInvoice {
@@ -81,9 +81,17 @@ export function portalPage(args: {
   businessName: string;
   customerName: string;
   invoices: PortalInvoice[];
+  /** where a Pay button posts, when this instance can take card payments */
+  payPath?: string;
   now?: Date;
 }): string {
-  const { businessName, customerName, invoices, now = new Date() } = args;
+  const {
+    businessName,
+    customerName,
+    invoices,
+    payPath,
+    now = new Date(),
+  } = args;
 
   const owed = invoices.reduce(
     (sum, i) => sum + Math.max(0, i.totalCents - i.paidCents),
@@ -93,18 +101,24 @@ export function portalPage(args: {
 
   const rows =
     invoices.length === 0
-      ? `<tr><td colspan="4" class="muted">Nothing outstanding.</td></tr>`
+      ? `<tr><td colspan="5" class="muted">Nothing outstanding.</td></tr>`
       : invoices
           .map((i) => {
             const state = label(i, now);
             const cls =
               state === "paid" ? "paid" : state === "overdue" ? "over" : "due";
             const balance = Math.max(0, i.totalCents - i.paidCents);
+            const pay =
+              payPath && balance > 0
+                ? `<form method="post" action="${html(payPath)}/${html(i.id)}">
+       <button class="pay" type="submit">Pay</button></form>`
+                : "";
             return `<tr>
   <td>${html(i.number)}</td>
   <td>${html(day(i.dueDate))}</td>
   <td class="${cls}">${html(state)}</td>
   <td class="num">${html(money(balance || i.totalCents, i.currency))}</td>
+  <td class="num">${pay}</td>
 </tr>`;
           })
           .join("\n");
@@ -120,7 +134,7 @@ export function portalPage(args: {
 <h1>${html(businessName)}</h1>
 <p class="sub">Invoices for ${html(customerName)}</p>
 <table>
-  <thead><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Amount</th></tr></thead>
+  <thead><tr><th>Invoice</th><th>Due</th><th>Status</th><th class="num">Amount</th><th></th></tr></thead>
   <tbody>${rows}</tbody>
 </table>
 ${owed > 0 ? `<p class="owed">${html(money(owed, currency))} outstanding</p>` : `<p class="owed paid">Nothing outstanding</p>`}

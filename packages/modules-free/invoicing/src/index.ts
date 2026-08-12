@@ -33,6 +33,23 @@ function newPortalToken(): string {
     .replace(/=+$/, "");
 }
 
+/**
+ * Finds the customer a portal token belongs to.
+ *
+ * Exported because Pro adds paying to this page and must answer the same
+ * question. Two implementations of "who is this token" is one too many.
+ */
+export async function contactByPortalToken(token: string) {
+  if (token.length < 20) return null;
+  const candidates = await db
+    .select()
+    .from(schema.contacts)
+    .where(isNotNull(schema.contacts.portalToken));
+  return (
+    candidates.find((row) => tokenMatches(token, row.portalToken ?? "")) ?? null
+  );
+}
+
 /** Constant time: a token check that leaks timing is not a check. */
 function tokenMatches(supplied: string, expected: string): boolean {
   const a = new TextEncoder().encode(supplied);
@@ -425,15 +442,7 @@ export default defineModule({
      */
     ctx.app.get("/portal/:token", async (c) => {
       const supplied = c.req.param("token");
-      if (supplied.length < 20) return c.notFound();
-
-      const candidates = await db
-        .select()
-        .from(schema.contacts)
-        .where(isNotNull(schema.contacts.portalToken));
-      const contact = candidates.find((row) =>
-        tokenMatches(supplied, row.portalToken ?? ""),
-      );
+      const contact = await contactByPortalToken(supplied);
       if (!contact) return c.notFound();
 
       const rows = await db
@@ -464,6 +473,11 @@ export default defineModule({
         portalPage({
           businessName: org?.name ?? "Invoices",
           customerName: contact.name,
+          // Paying online is a Pro feature; a Free instance shows the bill and
+          // leaves the customer to pay however they already do.
+          payPath: ctx.entitled({ tier: "pro" })
+            ? `/portal/${supplied}/pay`
+            : undefined,
           invoices: rows.map((invoice) => ({
             ...invoice,
             paidCents: paid
