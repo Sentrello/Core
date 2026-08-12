@@ -1,5 +1,9 @@
 import { registerBootstrapRoutes } from "@sentrello/auth/bootstrap";
-import { mountAuth } from "@sentrello/auth/hono";
+import {
+  mountAuth,
+  requirePermission,
+  requireSession,
+} from "@sentrello/auth/hono";
 import { runModuleMigrations } from "@sentrello/db/module-migrations";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
@@ -62,6 +66,43 @@ app.get("/healthz", (c) =>
 const uiModules = serveModuleUi(app, modules, loaded);
 
 app.get("/api/_meta", (c) => c.json({ nav, loaded, ui: uiModules }));
+
+/**
+ * What this instance is licensed for.
+ *
+ * The first question anyone asks when a feature disappears is "has something
+ * expired?", and until now the only way to answer it was to read a JWT off the
+ * server. Behind a session and the settings permission: it names the licence
+ * and the modules bought, which is not something to hand to the internet.
+ */
+app.get(
+  "/api/license",
+  requireSession(),
+  requirePermission({ settings: ["read"] }),
+  (c) => {
+    const claims = state.claims;
+    const expiresAt =
+      typeof claims?.exp === "number"
+        ? new Date(claims.exp * 1000).toISOString()
+        : null;
+
+    return c.json({
+      tier: claims?.tier ?? "free",
+      valid: state.valid,
+      // Present when the licence failed to verify, so the screen can say why
+      // rather than only that something is wrong.
+      reason: state.reason ?? null,
+      modules: claims?.modules ?? [],
+      seats: claims?.seats ?? null,
+      instanceId: claims?.instance_id ?? null,
+      // The token is short-lived and refreshed nightly; this is the deadline
+      // for that refresh, not the end of the subscription.
+      tokenExpiresAt: expiresAt,
+      graceUntil: claims?.grace_until ?? null,
+      modulesLoaded: loaded,
+    });
+  },
+);
 
 // last: everything unclaimed is the SPA
 serveWeb(app);

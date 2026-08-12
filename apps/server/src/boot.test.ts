@@ -219,6 +219,16 @@ test("a module id cannot be used to reach a file off the map", async () => {
   }
 });
 
+test("the licence is not readable without a session", async () => {
+  // It names the licence and the modules bought: not something to hand to
+  // the internet, unlike /healthz which only says free or pro.
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+  const res = await server.fetch(new Request("http://localhost/api/license"));
+  expect(res.status).toBe(401);
+});
+
 test("a business route is 401 without a session", async () => {
   process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
   process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";

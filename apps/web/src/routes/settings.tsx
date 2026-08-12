@@ -11,6 +11,18 @@ import {
   muted,
 } from "../lib/ui";
 
+interface LicenseResponse {
+  tier: string;
+  valid: boolean;
+  reason: string | null;
+  modules: string[];
+  seats: number | null;
+  instanceId: string | null;
+  tokenExpiresAt: string | null;
+  graceUntil: string | null;
+  modulesLoaded: string[];
+}
+
 interface SettingsResponse {
   business: { name: string; slug: string };
   instance: { baseUrl: string; baseUrlMatchesRequest: boolean };
@@ -70,6 +82,11 @@ export function Settings() {
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<SettingsResponse>("/api/settings"),
+  });
+
+  const licence = useQuery({
+    queryKey: ["license"],
+    queryFn: () => api<LicenseResponse>("/api/license"),
   });
 
   const rename = useMutation({
@@ -181,10 +198,69 @@ export function Settings() {
       </Card>
 
       <Card>
+        <div className="flex items-baseline justify-between">
+          <p className="font-medium">Licence</p>
+          {licence.data ? (
+            <State
+              ok={licence.data.valid}
+              yes={licence.data.tier === "pro" ? "Pro" : "Free"}
+              no="not verified"
+            />
+          ) : null}
+        </div>
+        {licence.data ? (
+          <>
+            {!licence.data.valid ? (
+              // The answer to "why did my features disappear?"
+              <p
+                className="mt-1 text-sm"
+                style={{ color: "var(--color-warning)" }}
+              >
+                Running as Free
+                {licence.data.reason ? `: ${licence.data.reason}` : "."} Paid
+                features stay dark until a valid licence is in place. Your data
+                is untouched and returns when it is.
+              </p>
+            ) : null}
+
+            {licence.data.modules.length > 0 ? (
+              <p className="mt-1 text-sm" style={muted}>
+                Modules: {licence.data.modules.join(", ")}
+              </p>
+            ) : null}
+
+            {licence.data.tokenExpiresAt ? (
+              <p className="mt-1 text-sm" style={muted}>
+                Licence token renews automatically; this one is valid until{" "}
+                {new Date(licence.data.tokenExpiresAt).toLocaleString()}. A
+                renewal that cannot reach the licence server is not urgent —
+                there is a grace period before anything changes.
+              </p>
+            ) : null}
+
+            {licence.data.graceUntil ? (
+              <p
+                className="mt-1 text-sm"
+                style={{ color: "var(--color-warning)" }}
+              >
+                Billing needs attention. Paid features keep working until{" "}
+                {new Date(licence.data.graceUntil).toLocaleDateString()}.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </Card>
+
+      <Card>
         <p className="font-medium">This instance</p>
         <p className="mt-1 text-sm" style={muted}>
           Links in emails are built from {data.instance.baseUrl}.
         </p>
+        {licence.data?.instanceId ? (
+          <p className="mt-1 text-xs" style={muted}>
+            Instance {licence.data.instanceId}
+          </p>
+        ) : null}
         {!data.instance.baseUrlMatchesRequest ? (
           // The reason a customer receives a link pointing at localhost.
           <p className="mt-1 text-sm" style={{ color: "var(--color-warning)" }}>
