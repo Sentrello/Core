@@ -35,6 +35,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export type Meta = {
+  /** The release this instance runs, used to key module scripts by version. */
+  version?: string;
   /** `moduleId` is which module registered the entry, and owns its screens. */
   nav: { id: string; label: string; order?: number; moduleId: string }[];
   loaded: string[];

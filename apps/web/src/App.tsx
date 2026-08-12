@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Meta, api } from "./lib/api";
 import { authClient, useSession } from "./lib/auth";
+import { setModuleRelease } from "./lib/module-ui";
 import { Bookkeeping } from "./routes/bookkeeping";
 import { Contacts } from "./routes/contacts";
 import { ResetPassword } from "./routes/forgot-password";
@@ -32,7 +33,13 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
 function useMeta() {
   return useQuery({
     queryKey: ["meta"],
-    queryFn: () => api<Meta>("/api/_meta"),
+    queryFn: async () => {
+      const meta = await api<Meta>("/api/_meta");
+      // Before any module script is requested, so an upgraded instance never
+      // serves the previous release's screen from cache.
+      setModuleRelease(meta.version ?? "");
+      return meta;
+    },
   });
 }
 

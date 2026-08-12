@@ -20,6 +20,21 @@ import * as ui from "./ui";
 
 type ScreenComponent = () => React.ReactElement | null;
 
+/**
+ * The release this instance is running, published by the app shell.
+ *
+ * Module scripts are cached for five minutes and their URLs carry no version,
+ * so without this a customer runs the previous release's screen against the
+ * new API for five minutes after every upgrade.
+ */
+let release = "";
+export function setModuleRelease(value: string): void {
+  release = value;
+}
+
+const versioned = (path: string) =>
+  release ? `${path}?v=${encodeURIComponent(release)}` : path;
+
 interface SentrelloRuntime {
   react: typeof React;
   jsxRuntime: typeof jsxRuntime;
@@ -85,7 +100,7 @@ export function loadModuleScreen(
   const promise = new Promise<ScreenComponent | null>((resolve) => {
     // Stylesheet first, so the screen never paints unstyled. It is allowed to
     // be missing: a module with no classes of its own needs none.
-    const href = `/modules/${encodeURIComponent(moduleId)}/ui.css`;
+    const href = versioned(`/modules/${encodeURIComponent(moduleId)}/ui.css`);
     if (!document.querySelector(`link[href="${href}"]`)) {
       const link = document.createElement("link");
       link.rel = "stylesheet";
@@ -94,7 +109,7 @@ export function loadModuleScreen(
     }
 
     const script = document.createElement("script");
-    script.src = `/modules/${encodeURIComponent(moduleId)}/ui.js`;
+    script.src = versioned(`/modules/${encodeURIComponent(moduleId)}/ui.js`);
     script.async = true;
     script.onload = () => {
       const screen = pick();

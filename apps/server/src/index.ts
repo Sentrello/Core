@@ -78,7 +78,17 @@ app.get("/healthz", (c) =>
 
 const uiModules = serveModuleUi(app, modules, loaded);
 
-app.get("/api/_meta", (c) => c.json({ nav, loaded, ui: uiModules }));
+/**
+ * `version` is here so the SPA can key module scripts by release.
+ *
+ * A module screen is cached for five minutes with no version in its URL, so
+ * for five minutes after an upgrade a customer can be running the previous
+ * release's screen against the new API. Five minutes of a subtly wrong screen
+ * is a support ticket nobody can reproduce.
+ */
+app.get("/api/_meta", (c) =>
+  c.json({ nav, loaded, ui: uiModules, version: VERSION }),
+);
 
 /**
  * What the sign-in page needs before anyone has signed in.
