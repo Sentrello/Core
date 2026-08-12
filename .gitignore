@@ -16,5 +16,4 @@ docs/plan/
 MANIFEST.txt
 
 # local Claude Code settings
-.claude/settings.local.json
 dist-types/
