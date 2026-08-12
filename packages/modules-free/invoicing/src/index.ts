@@ -15,6 +15,7 @@ import { emailAdapter } from "@sentrello/email";
 import {
   invoiceEmail,
   portalLinkEmail,
+  quoteEmail,
   receiptEmail,
 } from "@sentrello/email/templates";
 import { defineModule } from "@sentrello/module-sdk";
@@ -174,6 +175,7 @@ export default defineModule({
   tier: "free",
   register(ctx) {
     ctx.registerNav({ id: "invoicing", label: "Invoices", order: 20 });
+    ctx.registerNav({ id: "quotes", label: "Quotes", order: 19 });
     for (const p of ["read", "create", "update", "delete", "send"]) {
       ctx.registerPermission(`invoicing:${p}`);
     }
@@ -333,6 +335,102 @@ export default defineModule({
         await sendReceipt(orgId, invoice, amountCents, balanceDue, c.req.url);
 
         return c.json({ payment, status, balanceDue }, 201);
+      },
+    );
+
+    ctx.app.get(
+      "/api/quotes",
+      requireSession(),
+      requirePermission({ invoicing: ["read"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        return c.json({
+          quotes: await db
+            .select()
+            .from(schema.quotes)
+            .where(eq(schema.quotes.organizationId, orgId)),
+        });
+      },
+    );
+
+    /**
+     * Sending a quote to the customer.
+     *
+     * Marking it sent is what puts it on their portal page — a draft is the
+     * business still thinking. The two happen together because a quote marked
+     * sent that nobody sent is worse than either alone.
+     */
+    ctx.app.post(
+      "/api/quotes/:id/send",
+      requireSession(),
+      requirePermission({ invoicing: ["send"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const [quote] = await db
+          .select()
+          .from(schema.quotes)
+          .where(
+            and(
+              eq(schema.quotes.id, c.req.param("id")),
+              eq(schema.quotes.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!quote) return c.json({ error: "not found" }, 404);
+        if (!quote.contactId) {
+          return c.json({ error: "this quote has no customer" }, 400);
+        }
+
+        const [contact] = await db
+          .select()
+          .from(schema.contacts)
+          .where(eq(schema.contacts.id, quote.contactId))
+          .limit(1);
+        if (!contact?.email) {
+          return c.json({ error: "that customer has no email address" }, 400);
+        }
+
+        const token = await ensurePortalToken(contact);
+        const base =
+          process.env.SENTRELLO_BASE_URL ?? new URL(c.req.url).origin;
+        const [org] = await db
+          .select({ name: schema.organizations.name })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, orgId))
+          .limit(1);
+
+        try {
+          await emailAdapter().send({
+            to: contact.email,
+            ...quoteEmail({
+              number: quote.number,
+              totalCents: quote.totalCents,
+              currency: quote.currency,
+              businessName: org?.name,
+              portalUrl: `${base}/portal/${token}`,
+            }),
+          });
+        } catch (err) {
+          console.error("[invoicing] sending the quote failed", err);
+          return c.json({ error: "could not send it" }, 502);
+        }
+
+        // Only now: a quote the customer can see is one that actually went.
+        const [updated] = await db
+          .update(schema.quotes)
+          .set({ status: "sent" })
+          .where(eq(schema.quotes.id, quote.id))
+          .returning();
+
+        await db.insert(schema.activities).values({
+          organizationId: orgId,
+          contactId: contact.id,
+          type: "note",
+          body: `Sent quote ${quote.number} to ${contact.email}`,
+          occurredAt: new Date(),
+        });
+
+        return c.json({ quote: updated, sent: true, to: contact.email });
       },
     );
 

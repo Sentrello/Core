@@ -500,6 +500,72 @@ test("sending another organization's invoice is a 404", async () => {
     .where(eq(schema.invoices.id, foreign?.id ?? ""));
 });
 
+test("sending a quote marks it sent, which is what the customer can see", async () => {
+  const quoteId = await sentQuote(contactId, 33000);
+  // sentQuote sets the status directly; here we exercise the real path
+  await db
+    .update(schema.quotes)
+    .set({ status: "draft" })
+    .where(eq(schema.quotes.id, quoteId));
+
+  const res = await app.request(`http://localhost/api/quotes/${quoteId}/send`, {
+    method: "POST",
+    headers,
+  });
+  expect(res.status).toBe(200);
+
+  const [quote] = await db
+    .select()
+    .from(schema.quotes)
+    .where(eq(schema.quotes.id, quoteId));
+  expect(quote?.status).toBe("sent");
+
+  const timeline = await db
+    .select()
+    .from(schema.activities)
+    .where(eq(schema.activities.contactId, contactId));
+  expect(
+    timeline.some((a) => a.body?.includes(`Sent quote ${quote?.number}`)),
+  ).toBe(true);
+});
+
+test("a quote with no customer cannot be sent", async () => {
+  const created = await app.request("http://localhost/api/quotes", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      currency: "USD",
+      lines: [
+        {
+          description: "Nobody's work",
+          quantity: 1,
+          unitPrice: 100,
+          taxRateBp: 0,
+        },
+      ],
+    }),
+  });
+  const { quote } = (await created.json()) as { quote: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/quotes/${quote.id}/send`,
+    {
+      method: "POST",
+      headers,
+    },
+  );
+  expect(res.status).toBe(400);
+});
+
+test("the quote list is this organization's only", async () => {
+  const res = await app.request("http://localhost/api/quotes", { headers });
+  const { quotes } = (await res.json()) as {
+    quotes: { organizationId: string }[];
+  };
+  expect(quotes.length).toBeGreaterThan(0);
+  expect(quotes.every((q) => q.organizationId === orgId)).toBe(true);
+});
+
 test("a customer accepting a quote raises an invoice that reaches the books", async () => {
   // Converting a quote used to create the invoice and post nothing, so the
   // revenue existed on the document and nowhere in the accounts.

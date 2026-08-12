@@ -72,6 +72,29 @@ like a bill in the post.</p>`
   };
 }
 
+export function quoteEmail(args: {
+  number: string;
+  totalCents: number;
+  currency: string;
+  businessName?: string;
+  portalUrl?: string;
+}) {
+  const link = args.portalUrl
+    ? `<p><a href="${escapeHtml(args.portalUrl)}">Read and accept this quote</a></p>
+<p style="color:#666;font-size:12px">Accepting turns it into an invoice.
+Nothing is charged until you pay it.</p>`
+    : "";
+  return {
+    subject: args.businessName
+      ? `Quote ${args.number} from ${args.businessName}`
+      : `Quote ${args.number}`,
+    html: layout(
+      `Quote ${args.number}`,
+      `<p>Total: <strong>${formatMoney(args.totalCents, args.currency)}</strong></p>${link}`,
+    ),
+  };
+}
+
 export function receiptEmail(args: {
   number: string;
   amountCents: number;

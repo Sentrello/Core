@@ -7,6 +7,7 @@ import { Contacts } from "./routes/contacts";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
+import { Quotes } from "./routes/quotes";
 import { Settings } from "./routes/settings";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
@@ -21,6 +22,7 @@ import { SignIn } from "./routes/sign-in";
 const SCREENS: Record<string, () => React.ReactElement | null> = {
   crm: Contacts,
   invoicing: Invoices,
+  quotes: Quotes,
   bookkeeping: Bookkeeping,
   forms: Forms,
   settings: Settings,
