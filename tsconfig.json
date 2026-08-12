@@ -42,6 +42,12 @@
     },
     {
       "path": "./packages/modules-free/settings"
+    },
+    {
+      "path": "./packages/mod-documents"
+    },
+    {
+      "path": "./packages/mod-documents/tsconfig.ui.json"
     }
   ]
 }
