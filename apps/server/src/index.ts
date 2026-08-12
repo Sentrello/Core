@@ -54,9 +54,18 @@ for (const module of modules) {
   }
 }
 
+/**
+ * Baked into the image at build time, so an instance can say what it is
+ * running without anyone needing shell access to the host. "Which version are
+ * you on?" is the first question of every support conversation, and until now
+ * the only way to answer it was `docker inspect`.
+ */
+const VERSION = process.env.SENTRELLO_VERSION ?? "unknown";
+
 app.get("/healthz", (c) =>
   c.json({
     status: "ok",
+    version: VERSION,
     tier: state.claims?.tier ?? "free",
     license_valid: state.valid,
     modules_loaded: loaded,

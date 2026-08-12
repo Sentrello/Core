@@ -156,6 +156,9 @@ test("/healthz boots and reports Free when no token is present", async () => {
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({
     status: "ok",
+    // Baked into the image at build time; "unknown" outside a released one,
+    // which is the honest answer when running from a checkout.
+    version: "unknown",
     tier: "free",
     license_valid: false,
     modules_loaded: ["crm", "forms", "invoicing", "bookkeeping", "settings"],
@@ -163,6 +166,22 @@ test("/healthz boots and reports Free when no token is present", async () => {
     // takes every feature of that module with it.
     modules_failed: [],
   });
+});
+
+test("/healthz reports the version the image was built with", async () => {
+  // "Which version are you on?" is the first question of every support
+  // conversation, and the only way to answer it used to be docker inspect.
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  process.env.SENTRELLO_VERSION = "9.9.9";
+
+  // A fresh module registry, because index.ts reads the variable once at load.
+  const mod = await import(`./index?version-test=${Date.now()}`);
+  const res = await mod.default.fetch(new Request("http://localhost/healthz"));
+  const body = (await res.json()) as { version: string };
+  expect(body.version).toBe("9.9.9");
+
+  process.env.SENTRELLO_VERSION = undefined;
 });
 
 test("/api/_meta exposes only the nav the loaded modules registered", async () => {
