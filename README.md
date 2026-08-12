@@ -10,6 +10,8 @@ else's infrastructure.
 [![PostgreSQL 17](https://img.shields.io/badge/postgres-17-336791)](https://www.postgresql.org/)
 [![Status: early](https://img.shields.io/badge/status-early%20access-orange)](#project-status)
 
+![Contacts, invoices and the ledger in one place](docs/images/contacts.jpg)
+
 ---
 
 ## Install
@@ -30,6 +32,35 @@ here](https://get.sentrello.com/install.sh), and the image is
 `ghcr.io/sentrello/core` (amd64 and arm64).
 
 Manage it afterwards with `sentrello status | update | backup | logs`.
+
+---
+
+## What it looks like
+
+Everything below is one install, running on one server, with one login.
+
+**Invoicing** — raise an invoice and it posts to the ledger as you issue it.
+Part payments are normal: the balance stays open and the books stay right.
+
+![Invoices with status and totals](docs/images/invoices.jpg)
+
+**Bookkeeping** — real double-entry underneath, read back as plain numbers.
+Every figure here is derived from journal entries, not from a spreadsheet
+column someone can overwrite.
+
+![Income, expenses and net, read from the ledger](docs/images/bookkeeping.jpg)
+
+### With Pro and the optional modules
+
+**Deals** — the pipeline as a board, with what each stage is worth.
+
+![Deals as a five-column board](docs/images/deals.jpg)
+
+**Time tracking** — timer-first, because the thing being timed is often a run
+to the post office and a form that demands a project first is a form nobody
+uses.
+
+![A week of tracked time with billable totals](docs/images/time-tracking.jpg)
 
 ---
 
