@@ -23,7 +23,7 @@ import {
   quoteEmail,
   receiptEmail,
 } from "@sentrello/email/templates";
-import { defineModule } from "@sentrello/module-sdk";
+import { defineModule, rateLimit } from "@sentrello/module-sdk";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { portalPage } from "./portal";
 
@@ -130,6 +130,10 @@ async function postInvoiceIssued(
     ],
   );
 }
+
+/** Generous for a customer reading their own bill, hostile to a flood. */
+const PORTAL_LIMIT = 30;
+const PORTAL_WINDOW_MS = 60_000;
 
 export default defineModule({
   id: "invoicing",
@@ -643,6 +647,21 @@ export default defineModule({
      * a 404, which is what an unknown URL looks like.
      */
     ctx.app.get("/portal/:token", async (c) => {
+      // The token is 32 random bytes, so guessing is hopeless — the limit is
+      // not against that. It is against a public path that does database work
+      // on every hit, on a box that is often the smallest one the customer
+      // could rent. Scheduling, the shop and forms all carry one; this did not.
+      const limited = rateLimit(
+        `portal:${c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for") ?? "anon"}`,
+        PORTAL_LIMIT,
+        PORTAL_WINDOW_MS,
+      );
+      if (!limited.allowed) {
+        return c.text("Too many requests. Try again in a minute.", 429, {
+          "retry-after": String(limited.retryAfterSeconds),
+        });
+      }
+
       const supplied = c.req.param("token");
       const contact = await contactByPortalToken(supplied);
       if (!contact) return c.notFound();
@@ -860,6 +879,21 @@ export default defineModule({
      * sent, and only into the invoice the business already priced.
      */
     ctx.app.post("/portal/:token/quotes/:id/accept", async (c) => {
+      // The token is 32 random bytes, so guessing is hopeless — the limit is
+      // not against that. It is against a public path that does database work
+      // on every hit, on a box that is often the smallest one the customer
+      // could rent. Scheduling, the shop and forms all carry one; this did not.
+      const limited = rateLimit(
+        `portal:${c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for") ?? "anon"}`,
+        PORTAL_LIMIT,
+        PORTAL_WINDOW_MS,
+      );
+      if (!limited.allowed) {
+        return c.text("Too many requests. Try again in a minute.", 429, {
+          "retry-after": String(limited.retryAfterSeconds),
+        });
+      }
+
       const token = c.req.param("token");
       const contact = await contactByPortalToken(token);
       if (!contact) return c.notFound();

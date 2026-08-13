@@ -3,6 +3,7 @@ import { auth } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
 import type { SentrelloEnv } from "@sentrello/module-sdk";
+import { resetRateLimits } from "@sentrello/module-sdk";
 import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import invoicing from "./index";
@@ -900,4 +901,33 @@ test("a due date the business chose is kept", async () => {
     .from(schema.invoices)
     .where(eq(schema.invoices.id, invoice.id));
   expect(row?.dueDate?.toISOString().slice(0, 10)).toBe(chosen);
+});
+
+/**
+ * The customer portal is a public path that does database work on every hit,
+ * on a box that is often the smallest one the customer could rent. Scheduling,
+ * the shop and forms all carry a limit; this one did not.
+ */
+test("the customer portal stops answering a flood", async () => {
+  resetRateLimits();
+  const codes = new Set<number>();
+  for (let i = 0; i < 35; i += 1) {
+    const res = await app.request("http://localhost/portal/not-a-real-token", {
+      headers: { "x-real-ip": "203.0.113.9" },
+    });
+    codes.add(res.status);
+  }
+  expect(codes.has(429)).toBe(true);
+  resetRateLimits();
+});
+
+test("a wrong token is refused the same way whether or not it exists", async () => {
+  // The reply must not tell an attacker they got closer.
+  resetRateLimits();
+  const missing = await app.request(
+    "http://localhost/portal/aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  );
+  const malformed = await app.request("http://localhost/portal/short");
+  expect(missing.status).toBe(malformed.status);
+  resetRateLimits();
 });
