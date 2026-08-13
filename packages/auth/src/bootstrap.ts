@@ -1,5 +1,6 @@
 import { db, schema } from "@sentrello/db";
 import type { SentrelloApp } from "@sentrello/module-sdk";
+import { rateLimit } from "@sentrello/module-sdk";
 import { auth } from "./index";
 import {
   duringBootstrap,
@@ -99,6 +100,14 @@ export async function ensureBootstrapped(owner?: OwnerDetails) {
  * a fresh instance has a sign-in screen and no way to create the account it
  * asks for.
  */
+/**
+ * Claiming an instance is a once-ever act, so a handful of attempts is
+ * generous. Five in a minute leaves room for a mistyped token and none for
+ * working through a list.
+ */
+const BOOTSTRAP_LIMIT = 5;
+const BOOTSTRAP_WINDOW_MS = 60_000;
+
 export function registerBootstrapRoutes(app: SentrelloApp) {
   app.get("/api/bootstrap", async (c) => {
     const needed = await needsBootstrap();
@@ -123,6 +132,21 @@ export function registerBootstrapRoutes(app: SentrelloApp) {
 
     // A publicly reachable instance must not be claimable by whoever finds it
     // first; the token proves access to the machine running it.
+    //
+    // Guessing is limited as well as refused. Better Auth rate-limits its own
+    // sign-in routes, but this one is ours, and an unclaimed instance is the
+    // most valuable thing on it — whoever claims it becomes the owner.
+    const limited = rateLimit(
+      `bootstrap:${c.req.header("x-real-ip") ?? c.req.header("x-forwarded-for") ?? "anon"}`,
+      BOOTSTRAP_LIMIT,
+      BOOTSTRAP_WINDOW_MS,
+    );
+    if (!limited.allowed) {
+      return c.json({ error: "too_many_attempts" }, 429, {
+        "retry-after": String(limited.retryAfterSeconds),
+      });
+    }
+
     if (
       !setupTokenAccepted(setupToken ?? c.req.header("x-sentrello-setup-token"))
     ) {
