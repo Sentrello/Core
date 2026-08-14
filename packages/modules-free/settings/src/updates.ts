@@ -104,7 +104,18 @@ export function isNewer(candidate: string, current: string): boolean {
 
 export async function readStatus(): Promise<UpdateStatus> {
   try {
-    return JSON.parse(await readFile(statusPath(), "utf8")) as UpdateStatus;
+    const status = JSON.parse(
+      await readFile(statusPath(), "utf8"),
+    ) as UpdateStatus;
+
+    // The agent has no way to clear this: the container it would clear it for
+    // is the one it just replaced. So a finished update stays on the screen
+    // forever unless the version it reports is checked against the version now
+    // running — once they agree, the news is that there is no news.
+    if (status.state === "done" && status.version === currentVersion()) {
+      return { state: "idle" };
+    }
+    return status;
   } catch {
     return { state: "idle" };
   }

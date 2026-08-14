@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { isNewer } from "./updates";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isNewer, readStatus } from "./updates";
 
 /**
  * Version comparison, which is the part of an update button that quietly gets
@@ -39,4 +42,30 @@ test("a version that is not numbers claims nothing", () => {
   // ordering of something that has none.
   expect(isNewer("0.2.0-rc1", "0.1.28")).toBe(false);
   expect(isNewer("main", "0.1.28")).toBe(false);
+});
+
+/**
+ * A finished update clears itself.
+ *
+ * The agent cannot clear it — the container it would clear it for is the one it
+ * just replaced — so the app compares what finished against what is running.
+ */
+test("a finished update stops being news once it is the running version", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sentrello-updates-"));
+  process.env.SENTRELLO_DATA_DIR = dir;
+  process.env.SENTRELLO_VERSION = "0.2.1";
+
+  await writeFile(
+    join(dir, "update-status.json"),
+    JSON.stringify({ state: "done", version: "0.2.1", message: "Updated." }),
+  );
+  expect((await readStatus()).state).toBe("idle");
+
+  // But an update to a version that is not running did not take effect, and
+  // saying nothing happened would hide exactly the failure worth seeing.
+  await writeFile(
+    join(dir, "update-status.json"),
+    JSON.stringify({ state: "done", version: "0.2.2", message: "Updated." }),
+  );
+  expect((await readStatus()).state).toBe("done");
 });
