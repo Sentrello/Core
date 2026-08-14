@@ -98,12 +98,17 @@ hardware you control.
   straight to your own instance
 - **Accounts and roles** — Admin, Accounting, Staff and an external Customer
   role that only ever sees its own invoices
+- **Settings** — your business name, address and tax number, which appear on
+  every invoice, quote and customer page you send
 
 **Pro and optional modules** are commercial and live in private repositories.
 Pro adds the deal pipeline, a 360° customer timeline, recurring invoices, credit
 notes, online payments, bank CSV import with reconciliation, AR aging, and the
-balance sheet, cash flow and tax reports. Optional modules — time tracking,
-scheduling, HR, inventory, projects, documents — are sold individually.
+balance sheet, cash flow and tax reports.
+
+Optional modules are bought individually on top of Pro — scheduling, time
+tracking, shop, projects, inventory, documents and people. A module needs Pro
+underneath it; it is not sold against the Free tier.
 
 The Free tier is a real product, not a trial. It doesn't expire, doesn't nag,
 and doesn't need a licence key.
