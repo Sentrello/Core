@@ -36,7 +36,15 @@ export async function refreshLicenseToken(config = configFromEnv()) {
       // a hung license server must not hang the daily job forever
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return { refreshed: false }; // keep the existing token until it expires
+    if (!res.ok) {
+      // Keep the existing token until it expires — but carry back why, because
+      // "refused" and "unreachable" need completely different actions from the
+      // person standing at the terminal, and they used to be indistinguishable.
+      const { error } = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      return { refreshed: false, error };
+    }
     const { token } = (await res.json()) as { token?: string };
     if (!token) return { refreshed: false };
     await Bun.write(tokenPath, token);

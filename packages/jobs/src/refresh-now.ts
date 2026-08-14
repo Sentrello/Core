@@ -15,7 +15,30 @@ if (result.refreshed) {
   process.exit(0);
 }
 
+// The licence is valid but already in use elsewhere. Almost always a customer
+// who moved to a new server, so the message names that case first rather than
+// accusing them of sharing a key.
+if (result.error === "instance_limit") {
+  console.error(
+    "this licence is already active on another server.\n" +
+      "If you have moved to a new machine, ask support to release the old one.",
+  );
+  process.exit(1);
+}
+
+if (result.error === "not_entitled") {
+  console.error(
+    "this licence is not active — check the subscription is paid and current.",
+  );
+  process.exit(1);
+}
+
+if (result.error === "invalid_license") {
+  console.error("that licence key was not recognised.");
+  process.exit(1);
+}
+
 console.error(
-  "could not activate the licence: the server refused or was unreachable",
+  "could not activate the licence: the server could not be reached.",
 );
 process.exit(1);
