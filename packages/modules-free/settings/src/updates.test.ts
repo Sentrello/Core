@@ -1,0 +1,42 @@
+import { expect, test } from "bun:test";
+import { isNewer } from "./updates";
+
+/**
+ * Version comparison, which is the part of an update button that quietly gets
+ * it wrong. A business told it is current while sitting a release behind has
+ * no way to discover the mistake.
+ */
+test("a later patch is newer", () => {
+  expect(isNewer("0.1.28", "0.1.27")).toBe(true);
+  expect(isNewer("0.1.27", "0.1.28")).toBe(false);
+});
+
+test("ten is newer than nine, which string comparison gets backwards", () => {
+  expect(isNewer("0.1.10", "0.1.9")).toBe(true);
+  expect(isNewer("0.1.9", "0.1.10")).toBe(false);
+  expect(isNewer("0.2.0", "0.1.99")).toBe(true);
+});
+
+test("the same version is not an update", () => {
+  expect(isNewer("0.1.28", "0.1.28")).toBe(false);
+});
+
+test("a shorter version compares against the missing parts as zero", () => {
+  expect(isNewer("1.0", "0.9.9")).toBe(true);
+  expect(isNewer("1.0.1", "1.0")).toBe(true);
+  expect(isNewer("1.0", "1.0.0")).toBe(false);
+});
+
+test("an unknown version claims nothing in either direction", () => {
+  // Running from a checkout, where the image never stamped a version. Offering
+  // an update from "unknown" is offering to do something nobody can predict.
+  expect(isNewer("0.1.28", "unknown")).toBe(false);
+  expect(isNewer("unknown", "0.1.28")).toBe(false);
+});
+
+test("a version that is not numbers claims nothing", () => {
+  // A pre-release or a git sha. Better to show no update than to guess the
+  // ordering of something that has none.
+  expect(isNewer("0.2.0-rc1", "0.1.28")).toBe(false);
+  expect(isNewer("main", "0.1.28")).toBe(false);
+});

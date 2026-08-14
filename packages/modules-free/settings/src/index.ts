@@ -6,6 +6,14 @@ import {
 import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
 import { eq } from "drizzle-orm";
+import {
+  agentPresent,
+  currentVersion,
+  isNewer,
+  latestVersion,
+  readStatus,
+  requestUpdate,
+} from "./updates";
 
 /**
  * What this instance is, and what it is wired up to.
@@ -92,6 +100,76 @@ export default defineModule({
     );
 
     /** Renaming the business. It appears on every page a customer sees. */
+    /**
+     * What version this is, and whether there is a newer one.
+     *
+     * Behind the read permission rather than public: it names the release an
+     * instance runs, which is the first thing anyone probing for a known
+     * vulnerability wants to know.
+     */
+    ctx.app.get(
+      "/api/settings/updates",
+      requireSession(),
+      requirePermission({ settings: ["read"] }),
+      async (c) => {
+        const current = currentVersion();
+        const latest = await latestVersion();
+
+        return c.json({
+          current,
+          latest,
+          updateAvailable: latest !== null && isNewer(latest, current),
+          // Without an agent the button would write a file nobody reads, so
+          // the screen needs to know to explain instead of offering.
+          canApply: await agentPresent(),
+          status: await readStatus(),
+        });
+      },
+    );
+
+    /**
+     * Ask the host to update.
+     *
+     * `settings: ["update"]` rather than read: replacing the running version
+     * is the most consequential button in the product, and staff have the read
+     * permission so they can see whether email works.
+     */
+    ctx.app.post(
+      "/api/settings/updates",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const current = currentVersion();
+        const latest = await latestVersion();
+
+        if (!latest) {
+          return c.json(
+            {
+              error: "could not reach the licence server to check for updates",
+            },
+            503,
+          );
+        }
+        if (!isNewer(latest, current)) {
+          // Not an error worth alarming anyone with, but not a no-op either:
+          // saying so beats a spinner that resolves into nothing.
+          return c.json({ error: `already running ${current}` }, 409);
+        }
+        if (!(await agentPresent())) {
+          return c.json(
+            {
+              error:
+                "this instance has no update agent, so it cannot update itself. Run `sentrello update` on the server.",
+            },
+            409,
+          );
+        }
+
+        await requestUpdate(latest);
+        return c.json({ status: await readStatus() }, 202);
+      },
+    );
+
     ctx.app.put(
       "/api/settings",
       requireSession(),

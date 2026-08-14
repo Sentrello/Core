@@ -255,3 +255,40 @@ test("another organization's settings cannot be read or written", async () => {
     .delete(schema.organizations)
     .where(eq(schema.organizations.id, theirs));
 });
+
+/**
+ * The update button.
+ *
+ * The app cannot update itself — it lives in the container being replaced — so
+ * these cover what it is allowed to do: report a version, and ask. The asking
+ * is guarded harder than the reporting, because replacing the running version
+ * is the most consequential button in the product.
+ */
+test("the update screen reports the running version", async () => {
+  const res = await app.request("http://localhost/api/settings/updates", {
+    headers,
+  });
+  expect(res.status).toBe(200);
+
+  const body = (await res.json()) as {
+    current: string;
+    canApply: boolean;
+    status: { state: string };
+  };
+  expect(body.current).toBeTruthy();
+  // No agent in a test process, so the screen must not offer a dead button.
+  expect(body.canApply).toBe(false);
+  expect(body.status.state).toBe("idle");
+});
+
+test("an instance with no agent refuses rather than pretending", async () => {
+  const res = await app.request("http://localhost/api/settings/updates", {
+    method: "POST",
+    headers,
+    body: "{}",
+  });
+  // Either it could not reach the licence server, or there is no agent. Both
+  // are honest refusals; what must never happen is a 202 that goes nowhere.
+  expect([503, 409]).toContain(res.status);
+  expect(res.status).not.toBe(202);
+});

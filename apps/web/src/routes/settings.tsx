@@ -83,6 +83,14 @@ function Copyable({ label, value }: { label: string; value: string }) {
   );
 }
 
+interface UpdatesResponse {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  canApply: boolean;
+  status: { state: string; message?: string; version?: string; at?: string };
+}
+
 export function Settings() {
   const qc = useQueryClient();
   const [name, setName] = useState<string | null>(null);
@@ -98,6 +106,23 @@ export function Settings() {
   const licence = useQuery({
     queryKey: ["license"],
     queryFn: () => api<LicenseResponse>("/api/license"),
+  });
+
+  const updates = useQuery({
+    queryKey: ["updates"],
+    queryFn: () => api<UpdatesResponse>("/api/settings/updates"),
+    // While the host is working, the only way to see progress is to ask again.
+    // Idle instances ask once and stop, so this is not a background poller.
+    refetchInterval: (q) =>
+      q.state.data &&
+      ["requested", "running"].includes(q.state.data.status.state)
+        ? 5_000
+        : false,
+  });
+
+  const applyUpdate = useMutation({
+    mutationFn: () => api("/api/settings/updates", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["updates"] }),
   });
 
   const rename = useMutation({
@@ -352,6 +377,78 @@ export function Settings() {
               </p>
             ) : null}
           </>
+        ) : null}
+      </Card>
+
+      <Card>
+        <div className="flex items-baseline justify-between">
+          <p className="font-medium">Updates</p>
+          <State
+            ok={!updates.data?.updateAvailable}
+            yes="up to date"
+            no="update available"
+          />
+        </div>
+
+        <p className="mt-1 text-sm" style={muted}>
+          Running version {updates.data?.current ?? "…"}.
+        </p>
+
+        {/*
+          An update replaces the running container, so the app cannot do it
+          itself. Where the host has no agent to do it, saying so beats a
+          button that appears to work and silently does nothing.
+        */}
+        {updates.data?.updateAvailable ? (
+          updates.data.canApply ? (
+            <>
+              <p className="mt-1 text-sm">
+                Version {updates.data.latest} is available. Updating takes about
+                a minute, during which the app is unavailable. Your data is not
+                touched.
+              </p>
+              <div className="mt-2">
+                <Button
+                  onClick={() => applyUpdate.mutate()}
+                  disabled={
+                    applyUpdate.isPending ||
+                    ["requested", "running"].includes(updates.data.status.state)
+                  }
+                >
+                  {["requested", "running"].includes(updates.data.status.state)
+                    ? "Updating…"
+                    : `Update to ${updates.data.latest}`}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="mt-1 text-sm">
+              Version {updates.data.latest} is available. This instance cannot
+              update itself, so run <code>sentrello update</code> on the server.
+            </p>
+          )
+        ) : null}
+
+        {updates.data && updates.data.status.state !== "idle" ? (
+          <p
+            className="mt-2 text-sm"
+            style={
+              updates.data.status.state === "failed"
+                ? { color: "var(--color-danger)" }
+                : muted
+            }
+          >
+            {updates.data.status.message ?? updates.data.status.state}
+          </p>
+        ) : null}
+
+        {applyUpdate.error ? <ErrorNote error={applyUpdate.error} /> : null}
+
+        {updates.data && updates.data.latest === null ? (
+          <p className="mt-1 text-sm" style={muted}>
+            Update checks need a licence, so this instance will not check on its
+            own. Updates are published on GitHub.
+          </p>
         ) : null}
       </Card>
 
