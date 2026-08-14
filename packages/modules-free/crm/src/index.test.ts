@@ -211,3 +211,56 @@ test("a customer with no history deletes cleanly", async () => {
     .where(eq(schema.contacts.id, contact?.id ?? ""));
   expect(rows).toHaveLength(0);
 });
+
+/**
+ * JSON has no date type, so a client can only send a string — and the column
+ * is a timestamp. Drizzle handed the string to the driver, which called
+ * `.toISOString()` on it and threw, so every client that sent a date got a 500
+ * and no indication why.
+ */
+test("a date sent as a string is accepted, because that is the only way to send one", async () => {
+  const contact = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Date Test" }),
+  });
+  const { contact: c } = (await contact.json()) as { contact: { id: string } };
+
+  const res = await app.request("http://localhost/api/activities", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId: c.id,
+      type: "note",
+      body: "Called about the gutters",
+      occurredAt: "2026-08-13T09:30:00.000Z",
+    }),
+  });
+  expect(res.status).toBe(201);
+
+  const { activity } = (await res.json()) as {
+    activity: { occurredAt: string };
+  };
+  expect(new Date(activity.occurredAt).toISOString()).toBe(
+    "2026-08-13T09:30:00.000Z",
+  );
+});
+
+test("a date that is not a date is refused, not a 500", async () => {
+  const res = await app.request("http://localhost/api/tasks", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ title: "Bad date", dueAt: "next Tuesday-ish" }),
+  });
+  expect(res.status).toBe(400);
+  expect(((await res.json()) as { error: string }).error).toContain("dueAt");
+});
+
+test("an omitted date is still omitted", async () => {
+  const res = await app.request("http://localhost/api/tasks", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ title: "No due date" }),
+  });
+  expect(res.status).toBe(201);
+});

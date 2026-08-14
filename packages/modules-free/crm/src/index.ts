@@ -12,6 +12,44 @@ import { and, eq } from "drizzle-orm";
  * — a business query without it is a cross-tenant leak, so the filter lives
  * here once rather than in each route.
  */
+/**
+ * Dates arrive as strings, because JSON has no date type.
+ *
+ * Drizzle hands a timestamp column straight to the driver, which calls
+ * `.toISOString()` on it — so a perfectly ordinary ISO string became
+ * `value.toISOString is not a function` and a 500. Every client sending a date
+ * hit this, since there is no other way to send one.
+ *
+ * Converted where the column is a timestamp, and refused with a 400 when it is
+ * not a date at all. Anything else is left alone.
+ */
+const TIMESTAMP_FIELDS = new Set([
+  "occurredAt",
+  "dueAt",
+  "completedAt",
+  "startsAt",
+  "endsAt",
+]);
+
+function withParsedDates(
+  body: Record<string, unknown>,
+): { ok: true; value: Record<string, unknown> } | { ok: false; field: string } {
+  const out: Record<string, unknown> = { ...body };
+  for (const field of TIMESTAMP_FIELDS) {
+    const raw = out[field];
+    if (raw === undefined) continue;
+    if (raw === null || raw === "") {
+      out[field] = null;
+      continue;
+    }
+    if (raw instanceof Date) continue;
+    const parsed = new Date(String(raw));
+    if (Number.isNaN(parsed.getTime())) return { ok: false, field };
+    out[field] = parsed;
+  }
+  return { ok: true, value: out };
+}
+
 function crud<T extends keyof typeof tables>(
   ctx: Parameters<Parameters<typeof defineModule>[0]["register"]>[0],
   resource: T,
@@ -44,9 +82,13 @@ function crud<T extends keyof typeof tables>(
     async (c) => {
       const orgId = activeOrganizationId(c.get("session"));
       const body = await c.req.json();
+      const parsed = withParsedDates(body);
+      if (!parsed.ok) {
+        return c.json({ error: `${parsed.field} is not a date` }, 400);
+      }
       const [row] = await db
         .insert(table)
-        .values({ ...body, organizationId: orgId })
+        .values({ ...parsed.value, organizationId: orgId })
         .returning();
       return c.json({ [singular]: row }, 201);
     },
@@ -60,10 +102,14 @@ function crud<T extends keyof typeof tables>(
       const orgId = activeOrganizationId(c.get("session"));
       const body = await c.req.json();
       // organizationId is never taken from the body — it comes from the session
-      const { organizationId: _ignored, id: _id, ...patch } = body;
+      const { organizationId: _ignored, id: _id, ...rest } = body;
+      const parsed = withParsedDates(rest);
+      if (!parsed.ok) {
+        return c.json({ error: `${parsed.field} is not a date` }, 400);
+      }
       const [row] = await db
         .update(table)
-        .set(patch)
+        .set(parsed.value)
         .where(
           and(eq(table.id, c.req.param("id")), eq(table.organizationId, orgId)),
         )
