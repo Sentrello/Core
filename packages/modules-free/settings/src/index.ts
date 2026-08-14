@@ -12,7 +12,9 @@ import {
   isNewer,
   latestVersion,
   readStatus,
+  requestRollback,
   requestUpdate,
+  rollbackTarget,
 } from "./updates";
 
 /**
@@ -118,12 +120,47 @@ export default defineModule({
         return c.json({
           current,
           latest,
+          rollbackTo: await rollbackTarget(),
           updateAvailable: latest !== null && isNewer(latest, current),
           // Without an agent the button would write a file nobody reads, so
           // the screen needs to know to explain instead of offering.
           canApply: await agentPresent(),
           status: await readStatus(),
         });
+      },
+    );
+
+    /**
+     * Ask the host to put the previous release back.
+     *
+     * Guarded like the update it undoes. The version is not taken from the
+     * request body: it is whatever the host recorded when it updated, so a
+     * form cannot ask this instance to run some other release.
+     */
+    ctx.app.post(
+      "/api/settings/rollback",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const target = await rollbackTarget();
+        if (!target) {
+          return c.json(
+            { error: "there is no earlier version to go back to" },
+            409,
+          );
+        }
+        if (!(await agentPresent())) {
+          return c.json(
+            {
+              error:
+                "this instance has no update agent, so it cannot roll itself back. Run `sentrello rollback` on the server.",
+            },
+            409,
+          );
+        }
+
+        await requestRollback(target);
+        return c.json({ status: await readStatus() }, 202);
       },
     );
 

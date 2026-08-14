@@ -292,3 +292,15 @@ test("an instance with no agent refuses rather than pretending", async () => {
   expect([503, 409]).toContain(res.status);
   expect(res.status).not.toBe(202);
 });
+
+test("rollback refuses when there is nowhere to go back to", async () => {
+  const res = await app.request("http://localhost/api/settings/rollback", {
+    method: "POST",
+    headers,
+    body: "{}",
+  });
+  // No recorded previous version and no agent. Either refusal is honest; a 202
+  // would be a promise to restart the business and then do nothing.
+  expect(res.status).toBe(409);
+  expect(res.status).not.toBe(202);
+});

@@ -102,6 +102,56 @@ export function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
+/**
+ * The release this instance could go back to.
+ *
+ * Written into the data directory by `sentrello update` rather than passed in
+ * the environment: the app runs in a container that cannot see the host's
+ * compose file, and the data directory is the one thing both sides already
+ * share. It also means someone who only ever uses the terminal still gets a
+ * working button afterwards.
+ *
+ * Rolling back changes the code, not the data. Migrations are additive and
+ * backward-compatible, so an older release runs against a newer schema — it
+ * ignores what it does not know about. Nothing entered since the update is
+ * lost, which is the point: an instance that has taken a day of invoices must
+ * not throw them away to fix a display bug.
+ */
+export async function rollbackTarget(): Promise<string | null> {
+  try {
+    const version = (
+      await readFile(`${dataDir()}/rollback-target`, "utf8")
+    ).trim();
+    // Never offer to "go back" to what is already running.
+    if (!version || version === currentVersion()) return null;
+    return version;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ask the host to roll back.
+ *
+ * A separate file from an update request so the agent can tell them apart
+ * without having to interpret a version number — the two mean opposite things
+ * and guessing from the digits would be a poor way to decide.
+ */
+export async function requestRollback(version: string): Promise<void> {
+  await mkdir(dataDir(), { recursive: true });
+  await writeFile(`${dataDir()}/rollback-requested`, `${version}\n`, "utf8");
+  await writeFile(
+    statusPath(),
+    JSON.stringify({
+      state: "requested",
+      version,
+      message: "Waiting for the host to pick this up.",
+      at: new Date().toISOString(),
+    } satisfies UpdateStatus),
+    "utf8",
+  );
+}
+
 export async function readStatus(): Promise<UpdateStatus> {
   try {
     const status = JSON.parse(

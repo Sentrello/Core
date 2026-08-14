@@ -86,6 +86,7 @@ function Copyable({ label, value }: { label: string; value: string }) {
 interface UpdatesResponse {
   current: string;
   latest: string | null;
+  rollbackTo: string | null;
   updateAvailable: boolean;
   canApply: boolean;
   status: { state: string; message?: string; version?: string; at?: string };
@@ -123,6 +124,18 @@ export function Settings() {
   const applyUpdate = useMutation({
     mutationFn: () => api("/api/settings/updates", { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["updates"] }),
+  });
+
+  // Asked for once before it happens. Going back is recoverable — running it
+  // again rolls forward — but it does take the business offline for a minute,
+  // which is not something to do on a mis-click.
+  const [confirmRollback, setConfirmRollback] = useState(false);
+  const rollback = useMutation({
+    mutationFn: () => api("/api/settings/rollback", { method: "POST" }),
+    onSuccess: () => {
+      setConfirmRollback(false);
+      qc.invalidateQueries({ queryKey: ["updates"] });
+    },
   });
 
   const rename = useMutation({
@@ -427,6 +440,66 @@ export function Settings() {
               update itself, so run <code>sentrello update</code> on the server.
             </p>
           )
+        ) : null}
+
+        {/*
+          Kept quieter than the update above it, and only shown when there is
+          somewhere to go back to. It is the thing you want at 2am after a bad
+          update, not something to invite on an ordinary Tuesday.
+        */}
+        {updates.data?.rollbackTo && updates.data.canApply ? (
+          <div
+            className="mt-3 border-t pt-3"
+            style={{ borderColor: "var(--border)" }}
+          >
+            {confirmRollback ? (
+              <>
+                <p className="text-sm">
+                  Go back to {updates.data.rollbackTo}? The app restarts and is
+                  unavailable for a minute or two.
+                </p>
+                <p className="mt-1 text-sm" style={muted}>
+                  {/* The question everyone actually has, answered before it is asked. */}
+                  Your data is not changed — nothing entered since the update is
+                  lost. If you need the database put back as well, that is a
+                  separate step on the server.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    onClick={() => rollback.mutate()}
+                    disabled={rollback.isPending}
+                  >
+                    {rollback.isPending
+                      ? "Going back…"
+                      : `Go back to ${updates.data.rollbackTo}`}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRollback(false)}
+                    className="text-sm underline"
+                    style={muted}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm" style={muted}>
+                Something wrong after updating?{" "}
+                <button
+                  type="button"
+                  onClick={() => setConfirmRollback(true)}
+                  className="underline"
+                  disabled={["requested", "running"].includes(
+                    updates.data.status.state,
+                  )}
+                >
+                  Go back to {updates.data.rollbackTo}
+                </button>
+              </p>
+            )}
+            {rollback.error ? <ErrorNote error={rollback.error} /> : null}
+          </div>
         ) : null}
 
         {updates.data && updates.data.status.state !== "idle" ? (

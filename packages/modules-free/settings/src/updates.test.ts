@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isNewer, readStatus } from "./updates";
+import { isNewer, readStatus, rollbackTarget } from "./updates";
 
 /**
  * Version comparison, which is the part of an update button that quietly gets
@@ -68,4 +68,32 @@ test("a finished update stops being news once it is the running version", async 
     JSON.stringify({ state: "done", version: "0.2.2", message: "Updated." }),
   );
   expect((await readStatus()).state).toBe("done");
+});
+
+/**
+ * Rollback, which the host records and the app only reports. The version is
+ * never taken from a request body — a form must not be able to name the
+ * release this instance runs.
+ */
+test("rollback is offered only when the host recorded somewhere to go", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sentrello-updates-"));
+  process.env.SENTRELLO_DATA_DIR = dir;
+  process.env.SENTRELLO_VERSION = "0.2.1";
+
+  // Nothing recorded: a fresh instance has never updated.
+  expect(await rollbackTarget()).toBeNull();
+
+  await writeFile(join(dir, "rollback-target"), "0.2.0\n");
+  expect(await rollbackTarget()).toBe("0.2.0");
+});
+
+test("it never offers to go back to what is already running", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sentrello-updates-"));
+  process.env.SENTRELLO_DATA_DIR = dir;
+  process.env.SENTRELLO_VERSION = "0.2.1";
+
+  // Left over from a rollback that already happened. Offering it would restart
+  // the business to arrive exactly where it started.
+  await writeFile(join(dir, "rollback-target"), "0.2.1\n");
+  expect(await rollbackTarget()).toBeNull();
 });
