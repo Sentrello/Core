@@ -1,3 +1,5 @@
+import { licenseKey as storedLicenseKey } from "@sentrello/licensing-client";
+
 export interface LicenseRefreshConfig {
   serverUrl?: string | undefined;
   licenseKey?: string | undefined;
@@ -5,10 +7,15 @@ export interface LicenseRefreshConfig {
   tokenPath?: string | undefined;
 }
 
-function configFromEnv(): LicenseRefreshConfig {
+/**
+ * The key comes from `licenseKey()` rather than straight from the environment,
+ * so a key entered in Settings by someone upgrading from Free is picked up by
+ * the daily refresh exactly like one the installer wrote.
+ */
+async function configFromEnv(): Promise<LicenseRefreshConfig> {
   return {
     serverUrl: process.env.SENTRELLO_LICENSE_SERVER_URL,
-    licenseKey: process.env.SENTRELLO_LICENSE_KEY,
+    licenseKey: (await storedLicenseKey()) ?? undefined,
     instanceId: process.env.SENTRELLO_INSTANCE_ID,
     tokenPath: process.env.SENTRELLO_LICENSE_TOKEN_PATH,
   };
@@ -20,8 +27,9 @@ function configFromEnv(): LicenseRefreshConfig {
  * keeps its last token until expiry and then downgrades to Free. The
  * `/api/license/token` endpoint itself is built in Packet 03.
  */
-export async function refreshLicenseToken(config = configFromEnv()) {
-  const { serverUrl, licenseKey, instanceId, tokenPath } = config;
+export async function refreshLicenseToken(config?: LicenseRefreshConfig) {
+  const { serverUrl, licenseKey, instanceId, tokenPath } =
+    config ?? (await configFromEnv());
   // Free instance: nothing to refresh
   if (!serverUrl || !licenseKey || !tokenPath) return { refreshed: false };
 

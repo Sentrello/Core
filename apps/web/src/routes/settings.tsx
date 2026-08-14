@@ -138,6 +138,28 @@ export function Settings() {
     },
   });
 
+  const [keyInput, setKeyInput] = useState("");
+  const enterKey = useMutation({
+    mutationFn: () =>
+      api("/api/settings/license", {
+        method: "POST",
+        body: JSON.stringify({ key: keyInput }),
+      }),
+    onSuccess: () => {
+      setKeyInput("");
+      qc.invalidateQueries({ queryKey: ["license"] });
+      qc.invalidateQueries({ queryKey: ["updates"] });
+    },
+  });
+
+  const sync = useMutation({
+    mutationFn: () => api("/api/settings/sync", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["license"] });
+      qc.invalidateQueries({ queryKey: ["updates"] });
+    },
+  });
+
   const rename = useMutation({
     mutationFn: (body: Record<string, string>) =>
       api("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
@@ -364,6 +386,56 @@ export function Settings() {
                 is untouched and returns when it is.
               </p>
             ) : null}
+
+            {/*
+              Upgrading from Free. Without this, buying Pro means SSH into your
+              own server and editing a dotfile at the moment you hand over
+              money — so the purchase ends in a support ticket rather than a
+              working instance.
+            */}
+            {!licence.data.valid || licence.data.tier !== "pro" ? (
+              <div
+                className="mt-3 border-t pt-3"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <Field
+                  label="Licence key"
+                  hint="From the email you were sent after buying. Paid features appear once it is checked."
+                >
+                  <Input
+                    value={keyInput}
+                    placeholder="SENT-XXXX-XXXX-XXXX-XXXX"
+                    onChange={(e) => setKeyInput(e.target.value)}
+                  />
+                </Field>
+                <div className="mt-2">
+                  <Button
+                    onClick={() => enterKey.mutate()}
+                    disabled={enterKey.isPending || keyInput.trim().length < 24}
+                  >
+                    {enterKey.isPending ? "Checking…" : "Activate"}
+                  </Button>
+                </div>
+                {enterKey.error ? <ErrorNote error={enterKey.error} /> : null}
+              </div>
+            ) : (
+              // Bought a module on the website a minute ago? This is what makes
+              // it appear now rather than whenever the daily refresh runs.
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => sync.mutate()}
+                  disabled={sync.isPending}
+                  className="text-sm underline"
+                  style={muted}
+                >
+                  {sync.isPending
+                    ? "Checking your subscription…"
+                    : "Check my subscription for changes"}
+                </button>
+                {sync.error ? <ErrorNote error={sync.error} /> : null}
+              </div>
+            )}
 
             {licence.data.modules.length > 0 ? (
               <p className="mt-1 text-sm" style={muted}>

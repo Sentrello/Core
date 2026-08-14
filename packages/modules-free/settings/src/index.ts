@@ -4,6 +4,12 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
+import {
+  isValidLicenseKey,
+  keyIsFromEnvironment,
+  licenseKey,
+  storeLicenseKey,
+} from "@sentrello/licensing-client";
 import { defineModule } from "@sentrello/module-sdk";
 import { eq } from "drizzle-orm";
 import {
@@ -13,6 +19,7 @@ import {
   latestVersion,
   readStatus,
   requestRollback,
+  requestSync,
   requestUpdate,
   rollbackTarget,
 } from "./updates";
@@ -160,6 +167,90 @@ export default defineModule({
         }
 
         await requestRollback(target);
+        return c.json({ status: await readStatus() }, 202);
+      },
+    );
+
+    /**
+     * Enter a licence key, for someone upgrading from Free.
+     *
+     * The alternative was SSH into your own server and edit a dotfile at the
+     * moment you hand over money, which is not a purchase experience.
+     *
+     * The key is validated to the exact shape we issue before it is stored,
+     * because it ends up on a command line: `sentrello update` interpolates it
+     * into a curl argument that runs as root on the customer's machine. Until
+     * this endpoint existed the value came from a file an operator wrote by
+     * hand, and the question never arose.
+     */
+    ctx.app.post(
+      "/api/settings/license",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const body = await c.req.json().catch(() => ({}) as { key?: string });
+        const key = typeof body.key === "string" ? body.key.trim() : "";
+
+        if (!isValidLicenseKey(key.toUpperCase())) {
+          // Deliberately says nothing about which part is wrong: this is the
+          // shape of the key, not whether it is real, and hinting at the
+          // difference helps someone guessing at keys.
+          return c.json(
+            { error: "that does not look like a Sentrello licence key" },
+            400,
+          );
+        }
+
+        if (keyIsFromEnvironment()) {
+          // A key set on the server is the more privileged of the two and must
+          // not be silently replaced from a browser.
+          return c.json(
+            {
+              error:
+                "this instance's licence key is set on the server. Change it there.",
+            },
+            409,
+          );
+        }
+
+        await storeLicenseKey(key);
+
+        // Stored is not the same as working: the key still has to be accepted
+        // by the licence server before any paid feature appears. Ask the host
+        // to go and find out rather than leaving the owner watching a screen
+        // that has not changed.
+        const canSync = await agentPresent();
+        if (canSync) await requestSync();
+
+        return c.json({ stored: true, syncing: canSync });
+      },
+    );
+
+    /**
+     * Fetch a fresh licence token and the bundles it entitles.
+     *
+     * What someone presses after buying a module on the website. Without it the
+     * purchase appears whenever the daily refresh next runs — up to a day after
+     * paying, which feels like it did not work.
+     */
+    ctx.app.post(
+      "/api/settings/sync",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        if (!(await licenseKey())) {
+          return c.json({ error: "this instance has no licence key yet" }, 409);
+        }
+        if (!(await agentPresent())) {
+          return c.json(
+            {
+              error:
+                "this instance cannot sync itself. Run `sentrello activate` on the server.",
+            },
+            409,
+          );
+        }
+        await requestSync();
         return c.json({ status: await readStatus() }, 202);
       },
     );

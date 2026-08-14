@@ -93,6 +93,7 @@
       "dependencies": {
         "@sentrello/db": "*",
         "@sentrello/email": "*",
+        "@sentrello/licensing-client": "*",
         "drizzle-orm": "^0.45.0",
         "pg-boss": "^10.1.5",
       },
@@ -162,6 +163,7 @@
       "dependencies": {
         "@sentrello/auth": "*",
         "@sentrello/db": "*",
+        "@sentrello/licensing-client": "*",
         "@sentrello/module-sdk": "*",
         "drizzle-orm": "^0.45.0",
         "hono": "^4.6.0",

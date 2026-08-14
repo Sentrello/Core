@@ -16,6 +16,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { licenseKey } from "@sentrello/licensing-client";
 
 /** Where the app and the host agent meet. Nothing else is shared. */
 const dataDir = () => resolve(process.env.SENTRELLO_DATA_DIR ?? "/data");
@@ -53,7 +54,7 @@ export function currentVersion(): string {
  * product makes, so it is told nothing rather than being made to phone home.
  */
 export async function latestVersion(): Promise<string | null> {
-  const key = process.env.SENTRELLO_LICENSE_KEY?.trim();
+  const key = await licenseKey();
   const server = process.env.SENTRELLO_LICENSE_SERVER_URL?.trim();
   if (!key || !server) return null;
 
@@ -201,6 +202,27 @@ export async function requestUpdate(version: string): Promise<void> {
  * promise an update that never comes. The agent writes this marker when it
  * starts, so the UI can offer instructions instead of a dead button.
  */
+/**
+ * Ask the host to fetch a fresh licence token and the bundles that go with it.
+ *
+ * Carries no parameter at all, which makes it the safest of these requests:
+ * there is no value for a form to smuggle anything into. The host decides what
+ * to fetch from the licence it already holds.
+ */
+export async function requestSync(): Promise<void> {
+  await mkdir(dataDir(), { recursive: true });
+  await writeFile(`${dataDir()}/sync-requested`, "sync\n", "utf8");
+  await writeFile(
+    statusPath(),
+    JSON.stringify({
+      state: "requested",
+      message: "Checking your subscription.",
+      at: new Date().toISOString(),
+    } satisfies UpdateStatus),
+    "utf8",
+  );
+}
+
 export async function agentPresent(): Promise<boolean> {
   try {
     await readFile(`${dataDir()}/update-agent`, "utf8");

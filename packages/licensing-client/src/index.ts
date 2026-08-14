@@ -11,6 +11,13 @@ export {
   SENTRELLO_LICENSE_PUBLIC_KEY,
   SENTRELLO_LICENSE_PUBLIC_KEYS,
 } from "./public-key";
+export {
+  isValidLicenseKey,
+  keyIsFromEnvironment,
+  licenseKey,
+  LICENSE_KEY_PATTERN,
+  storeLicenseKey,
+} from "./license-key";
 
 export interface LicenseClaims extends JWTPayload {
   license_id: string;
