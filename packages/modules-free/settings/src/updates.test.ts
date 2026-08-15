@@ -97,3 +97,21 @@ test("it never offers to go back to what is already running", async () => {
   await writeFile(join(dir, "rollback-target"), "0.2.1\n");
   expect(await rollbackTarget()).toBeNull();
 });
+
+/**
+ * A Free instance follows the `latest` tag, so after a rollback its recorded
+ * target is the word "latest". The agent accepts only digits and dots — that
+ * string reaches a root command line — so a button offering it would always
+ * fail. Found by the release upgrade check, not by a test.
+ */
+test("it does not offer a rollback the host would refuse", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sentrello-updates-"));
+  process.env.SENTRELLO_DATA_DIR = dir;
+  process.env.SENTRELLO_VERSION = "0.2.0";
+
+  await writeFile(join(dir, "rollback-target"), "latest\n");
+  expect(await rollbackTarget()).toBeNull();
+
+  await writeFile(join(dir, "rollback-target"), "0.1.28\n");
+  expect(await rollbackTarget()).toBe("0.1.28");
+});

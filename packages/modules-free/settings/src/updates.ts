@@ -125,6 +125,13 @@ export async function rollbackTarget(): Promise<string | null> {
     ).trim();
     // Never offer to "go back" to what is already running.
     if (!version || version === currentVersion()) return null;
+
+    // A Free instance follows the `latest` tag, so after a rollback the
+    // recorded target is the word "latest" rather than a number. The agent
+    // accepts only digits and dots — rightly, since that string reaches a root
+    // command line — so a button offering this would always fail. The terminal
+    // path handles it; the button says nothing rather than lying.
+    if (!/^\d+(\.\d+)*$/.test(version)) return null;
     return version;
   } catch {
     return null;
