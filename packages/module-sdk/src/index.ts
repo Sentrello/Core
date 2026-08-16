@@ -59,6 +59,16 @@ export interface ModuleContext {
      */
     group?: string;
     /**
+     * The permission this entry's screen needs.
+     *
+     * The routes behind it are guarded regardless; this decides whether
+     * somebody is offered the door at all. A staff member who can see
+     * Settings in the sidebar, clicks it, and is refused has been told twice
+     * that they cannot do their job — once by the error, and once by the menu
+     * that suggested otherwise.
+     */
+    requires?: Record<string, string[]>;
+    /**
      * Who is offered this entry, when "everybody who can load the module" is
      * the wrong answer.
      *

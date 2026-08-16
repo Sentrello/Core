@@ -1,3 +1,4 @@
+import { roles } from "@sentrello/auth";
 import { registerBootstrapRoutes } from "@sentrello/auth/bootstrap";
 import {
   activeOrganizationId,
@@ -5,12 +6,14 @@ import {
   requirePermission,
   requireSession,
 } from "@sentrello/auth/hono";
+import { db, schema } from "@sentrello/db";
 import { runModuleMigrations } from "@sentrello/db/module-migrations";
 import {
   isEnabled,
   moduleStates,
   setModuleEnabled,
 } from "@sentrello/db/modules";
+import { and, eq } from "@sentrello/db/orm";
 import { mailConfigured } from "@sentrello/email";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
@@ -46,7 +49,7 @@ const modules: SentrelloModule[] = [
   profile,
   ...(await discoverOptionalModules()),
 ];
-const { nav, navVisibility, tiers, loaded, jobs } = loadModules(
+const { nav, navVisibility, navPermissions, tiers, loaded, jobs } = loadModules(
   app,
   gate,
   modules,
@@ -120,13 +123,50 @@ app.get("/api/_meta", requireSession(), async (c) => {
   const orgId = session.session.activeOrganizationId;
   const states = orgId ? await moduleStates(orgId) : new Map();
 
+  /**
+   * The role this person holds here, for filtering the nav by what they may
+   * actually open.
+   *
+   * A role defined by the business itself is not in the compiled set, and a
+   * permission this cannot evaluate is left visible rather than hidden — the
+   * routes are guarded either way, and hiding a screen somebody is entitled to
+   * is the worse mistake of the two.
+   */
+  const [membership] = orgId
+    ? await db
+        .select({ role: schema.member.role })
+        .from(schema.member)
+        .where(
+          and(
+            eq(schema.member.userId, session.user.id),
+            eq(schema.member.organizationId, orgId),
+          ),
+        )
+        .limit(1)
+    : [];
+  const role = (
+    roles as Record<string, { authorize: (r: unknown) => { success: boolean } }>
+  )[membership?.role ?? ""];
+
   const visible = nav.filter((item) => {
     const allowed = navVisibility.get(item.id);
     if (allowed && !allowed(session)) return false;
+
     // A module the licence grants but nobody has set up belongs under Modules
     // with a way to start, not in the sidebar as a screen that half works.
-    if (tiers.get(item.moduleId) !== "module") return true;
-    return isEnabled(states, item.moduleId);
+    if (
+      tiers.get(item.moduleId) === "module" &&
+      !isEnabled(states, item.moduleId)
+    ) {
+      return false;
+    }
+
+    // And a screen this person cannot open should not be offered. Being
+    // refused after clicking tells somebody twice that they cannot do their
+    // job: once by the error, and once by the menu that suggested otherwise.
+    const needs = navPermissions.get(item.id);
+    if (!needs || !role) return true;
+    return role.authorize(needs).success;
   });
 
   return c.json({

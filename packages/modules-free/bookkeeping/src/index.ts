@@ -21,6 +21,9 @@ export default defineModule({
       label: "Bookkeeping",
       order: 30,
       group: "Money",
+      // The books are not everybody's business, and the routes behind this
+      // already say so.
+      requires: { bookkeeping: ["read"] },
     });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`bookkeeping:${p}`);

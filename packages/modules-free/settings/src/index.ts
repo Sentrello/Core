@@ -58,12 +58,16 @@ export default defineModule({
       label: "Roles",
       order: 91,
       group: "Configure",
+      // Who may do what is an owner's question, and a staff member offered it
+      // learns only that they are not trusted with it.
+      requires: { settings: ["update"] },
     });
     ctx.registerNav({
       id: "settings",
       label: "Settings",
       order: 90,
       group: "Configure",
+      requires: { settings: ["read"] },
     });
     for (const p of ["read", "update"]) {
       ctx.registerPermission(`settings:${p}`);

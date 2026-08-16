@@ -24,6 +24,8 @@ export function loadModules(
   // Kept apart from `nav` deliberately: a predicate cannot be serialised, and
   // the nav array is handed to the browser as it stands.
   const navVisibility = new Map<string, (s: SentrelloSession) => boolean>();
+  /** What each entry's screen needs, for `/api/_meta` to filter by role. */
+  const navPermissions = new Map<string, Record<string, string[]>>();
   // Which module each nav entry belongs to, and what tier that module is.
   // Optional modules are the only ones a business turns on and off — the Free
   // ones are the product, not a purchase.
@@ -47,9 +49,10 @@ export function loadModules(
       m.register({
         app,
         entitled,
-        registerNav: ({ visibleTo, ...i }) => {
+        registerNav: ({ visibleTo, requires, ...i }) => {
           nav.push({ ...i, moduleId: m.id });
           if (visibleTo) navVisibility.set(i.id, visibleTo);
+          if (requires) navPermissions.set(i.id, requires);
         },
         registerPermission: (p) => permissions.push(p),
         // namespaced: two modules may both want a job called "reminders"
@@ -61,5 +64,13 @@ export function loadModules(
     }
   }
   nav.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  return { nav, navVisibility, tiers, permissions, jobs, loaded: [...loaded] };
+  return {
+    nav,
+    navVisibility,
+    navPermissions,
+    tiers,
+    permissions,
+    jobs,
+    loaded: [...loaded],
+  };
 }

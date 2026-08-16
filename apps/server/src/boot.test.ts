@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { roles } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
 import { isEnabled } from "@sentrello/db/modules";
@@ -361,4 +362,49 @@ test("an optional module stays out of the nav until it is turned on", async () =
   // A Free module is the product, not a purchase: nothing can hide it.
   expect(isEnabled(new Map(), "crm")).toBe(false);
   expect(shown.some((n) => n.id === "crm")).toBe(true);
+});
+
+/**
+ * A screen somebody cannot open should not be offered.
+ *
+ * Found by inviting a colleague as Staff and looking at their sidebar: it
+ * listed Settings, Bookkeeping and Roles, all of which answered 403 when
+ * clicked. Being refused after clicking tells somebody twice that they cannot
+ * do their job — once by the error, and once by the menu that suggested
+ * otherwise.
+ */
+test("nav entries declare what they need, and the roles agree", () => {
+  const withPermission = defineModule({
+    id: "books",
+    tier: "free",
+    register(ctx) {
+      ctx.registerNav({
+        id: "bookkeeping",
+        label: "Bookkeeping",
+        requires: { bookkeeping: ["read"] },
+      });
+      ctx.registerNav({ id: "contacts", label: "Contacts" });
+    },
+  });
+
+  const { nav, navPermissions } = loadModules(
+    new Hono<SentrelloEnv>(),
+    freeGate,
+    [withPermission],
+  );
+
+  // The requirement travels beside the entry, never inside the payload the
+  // browser receives — it is not the browser's decision to make.
+  expect(nav.every((n) => !("requires" in n))).toBe(true);
+  expect(navPermissions.get("bookkeeping")).toEqual({ bookkeeping: ["read"] });
+  expect(navPermissions.has("contacts")).toBe(false);
+
+  // And the compiled roles answer it the way the routes do.
+  expect(roles.admin.authorize({ bookkeeping: ["read"] }).success).toBe(true);
+  expect(roles.accounting.authorize({ bookkeeping: ["read"] }).success).toBe(
+    true,
+  );
+  expect(roles.staff.authorize({ bookkeeping: ["read"] }).success).toBe(false);
+  expect(roles.staff.authorize({ settings: ["update"] }).success).toBe(false);
+  expect(roles.staff.authorize({ crm: ["read"] }).success).toBe(true);
 });
