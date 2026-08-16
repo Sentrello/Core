@@ -45,6 +45,14 @@ export default defineModule({
   id: "settings",
   tier: "free",
   register(ctx) {
+    // Managing who may do what. Under Configure beside Settings, and guarded
+    // the same way — the DEV notes put this with the Super Admin and Admins.
+    ctx.registerNav({
+      id: "roles",
+      label: "Roles",
+      order: 91,
+      group: "Configure",
+    });
     ctx.registerNav({
       id: "settings",
       label: "Settings",

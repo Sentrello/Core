@@ -20,6 +20,7 @@ import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
 import { Quotes } from "./routes/quotes";
+import { Roles } from "./routes/roles";
 import { Settings } from "./routes/settings";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
@@ -41,6 +42,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
   bookkeeping: Bookkeeping,
   forms: Forms,
   settings: Settings,
+  roles: Roles,
 };
 
 /** Screens that show a single record, chosen when navigation names one. */

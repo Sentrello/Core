@@ -211,6 +211,7 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
     "forms",
     "bookkeeping",
     "settings",
+    "roles",
   ]);
   expect(body.loaded).not.toContain("pro-core");
 });

@@ -9,10 +9,42 @@ export const authClient = createAuthClient({
   // statement, while the plugin's parameter is typed against the open
   // `Statements` shape
   plugins: [
-    organizationClient({ ac, roles } as Parameters<
-      typeof organizationClient
-    >[0]),
+    // dynamicAccessControl here as well as on the server: without it the
+    // client has no createRole/listRoles at all, and the roles screen has
+    // nothing to call.
+    organizationClient({
+      ac,
+      roles,
+      dynamicAccessControl: { enabled: true },
+    } as Parameters<typeof organizationClient>[0]),
   ],
 });
 
 export const { useSession, signIn, signOut, signUp } = authClient;
+
+/**
+ * The dynamic-role endpoints.
+ *
+ * They exist on the client at runtime — `dynamicAccessControl` adds them — but
+ * the cast above erases the generic that would reveal them to TypeScript, so
+ * the plugin resolves to its base shape. Named here once, deliberately, rather
+ * than casting at each of the four call sites where the reason would be lost.
+ */
+export interface OrgRole {
+  id: string;
+  role: string;
+  permission: string;
+}
+
+interface RoleApi {
+  listRoles: () => Promise<{ data?: OrgRole[]; error?: { message?: string } }>;
+  createRole: (input: {
+    role: string;
+    permission: Record<string, string[]>;
+  }) => Promise<{ error?: { message?: string } }>;
+  deleteRole: (input: {
+    roleName: string;
+  }) => Promise<{ error?: { message?: string } }>;
+}
+
+export const roleApi = authClient.organization as unknown as RoleApi;
