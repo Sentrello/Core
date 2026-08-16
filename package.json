@@ -14,7 +14,8 @@
     "keys:gen": "bash scripts/gen-keys.sh",
     "dev:token": "bun run scripts/mint-dev-token.ts",
     "dev:api": "bun run --cwd apps/server dev",
-    "build:web": "bun run --cwd apps/web build"
+    "build:web": "bun run --cwd apps/web build",
+    "verify": "bash scripts/verify.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
