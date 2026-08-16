@@ -415,6 +415,72 @@ function registerCrmScreens(
   }
 
   /**
+   * One deal, and who it involves.
+   *
+   * The board links here, so without it every card is a dead end — the same
+   * problem a contact's company link had before companies got a screen.
+   */
+  ctx.app.get(
+    "/api/deals/:id/related",
+    requireSession(),
+    requirePermission({ crm: ["read"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const id = c.req.param("id");
+
+      const [deal] = await db
+        .select()
+        .from(schema.deals)
+        .where(
+          and(eq(schema.deals.id, id), eq(schema.deals.organizationId, orgId)),
+        )
+        .limit(1);
+      if (!deal) return c.json({ error: "not found" }, 404);
+
+      const [company, everyone, notes] = await Promise.all([
+        deal.companyId
+          ? db
+              .select()
+              .from(schema.companies)
+              .where(
+                and(
+                  eq(schema.companies.id, deal.companyId),
+                  eq(schema.companies.organizationId, orgId),
+                ),
+              )
+              .limit(1)
+          : Promise.resolve([]),
+        // The deal names its contacts in a jsonb array, so they are gathered
+        // here rather than joined. Same trade as the contact screen, same
+        // reason: a business under twenty staff will never notice.
+        db
+          .select()
+          .from(schema.contacts)
+          .where(eq(schema.contacts.organizationId, orgId)),
+        db
+          .select()
+          .from(schema.notes)
+          .where(
+            and(
+              eq(schema.notes.organizationId, orgId),
+              eq(schema.notes.entityType, "deal"),
+              eq(schema.notes.entityId, id),
+            ),
+          )
+          .orderBy(desc(schema.notes.createdAt)),
+      ]);
+
+      const on = new Set(deal.contactIds ?? []);
+      return c.json({
+        deal,
+        company: company[0] ?? null,
+        contacts: everyone.filter((p) => on.has(p.id)),
+        notes,
+      });
+    },
+  );
+
+  /**
    * One company, and who and what belongs to it.
    *
    * The other half of the same idea. A contact's company link is only worth

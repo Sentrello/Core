@@ -558,3 +558,72 @@ test("a tag that is not this organisation's cannot be attached", async () => {
   );
   expect(res.status).toBe(404);
 });
+
+/**
+ * The board links to a deal, so this endpoint is what stops every card being a
+ * dead end — the same failure a contact's company link had before companies
+ * got a screen.
+ */
+test("a deal comes back with its company and the people on it", async () => {
+  const madeCo = await app.request("http://localhost/api/companies", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "The Brixton Tap" }),
+  });
+  const { company } = (await madeCo.json()) as { company: { id: string } };
+
+  const madePerson = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Dermot", lastName: "Kavanagh" }),
+  });
+  const { contact } = (await madePerson.json()) as { contact: { id: string } };
+
+  const madeDeal = await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Cellar damp works",
+      companyId: company.id,
+      contactIds: [contact.id],
+      amountCents: 220_000,
+    }),
+  });
+  const { deal } = (await madeDeal.json()) as { deal: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/deals/${deal.id}/related`,
+    { headers },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    company: { name: string } | null;
+    contacts: { name: string }[];
+  };
+  expect(body.company?.name).toBe("The Brixton Tap");
+  expect(body.contacts.map((p) => p.name)).toEqual(["Dermot Kavanagh"]);
+});
+
+test("a deal only returns the contacts actually on it", async () => {
+  // Contacts are gathered in memory from a jsonb array, so the filter is the
+  // thing doing the work — get it wrong and every contact appears on every
+  // deal.
+  await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Not", lastName: "Involved" }),
+  });
+  const madeDeal = await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Nobody's deal", contactIds: [] }),
+  });
+  const { deal } = (await madeDeal.json()) as { deal: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/deals/${deal.id}/related`,
+    { headers },
+  );
+  const body = (await res.json()) as { contacts: unknown[] };
+  expect(body.contacts).toHaveLength(0);
+});

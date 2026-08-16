@@ -12,6 +12,7 @@ import { Bookkeeping } from "./routes/bookkeeping";
 import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
 import { Contacts } from "./routes/contacts";
+import { DealDetail } from "./routes/deal-detail";
 import { Deals } from "./routes/deals";
 import { ResetPassword } from "./routes/forgot-password";
 import { Forms } from "./routes/forms";
@@ -44,6 +45,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
 const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
   crm: ContactDetail,
   companies: CompanyDetail,
+  deals: DealDetail,
 };
 
 function useMeta() {
