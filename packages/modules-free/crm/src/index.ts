@@ -317,6 +317,104 @@ function registerCrmScreens(
   );
 
   /**
+   * Put a tag on something, or take it off.
+   *
+   * `taggables` carries no organizationId of its own — it is scoped through
+   * the tag it points at. So the tag is checked against the session's
+   * organisation before anything is written, or one business could label
+   * another's records by guessing an id.
+   */
+  // Registered per entity rather than with one clever pattern. The pattern was
+  // `:entityType{contact|company|deal}s`, which is not valid Hono and took the
+  // whole router down with it — every route in the module 500'd, not just
+  // these. Three plain paths cost nothing and cannot do that.
+  for (const [plural, entityType] of [
+    ["contacts", "contact"],
+    ["companies", "company"],
+    ["deals", "deal"],
+  ] as const) {
+    ctx.app.post(
+      `/api/${plural}/:id/tags`,
+      requireSession(),
+      requirePermission({ crm: ["update"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const entityId = c.req.param("id");
+        const body = (await c.req.json().catch(() => ({}))) as {
+          tagId?: string;
+        };
+        if (!body.tagId) return c.json({ error: "a tagId is required" }, 400);
+
+        const [tag] = await db
+          .select()
+          .from(schema.tags)
+          .where(
+            and(
+              eq(schema.tags.id, body.tagId),
+              eq(schema.tags.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!tag) return c.json({ error: "no such tag" }, 404);
+
+        // Tagging something twice is not an error — somebody clicked twice, and
+        // a duplicate row would show the same label on the record twice.
+        const [existing] = await db
+          .select()
+          .from(schema.taggables)
+          .where(
+            and(
+              eq(schema.taggables.tagId, tag.id),
+              eq(schema.taggables.entityType, entityType),
+              eq(schema.taggables.entityId, entityId),
+            ),
+          )
+          .limit(1);
+        if (existing) return c.json({ tag });
+
+        await db
+          .insert(schema.taggables)
+          .values({ tagId: tag.id, entityType, entityId });
+        return c.json({ tag }, 201);
+      },
+    );
+
+    ctx.app.delete(
+      `/api/${plural}/:id/tags/:tagId`,
+      requireSession(),
+      requirePermission({ crm: ["update"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+
+        // Same check on the way out: without it, a guessed tag id would detach
+        // a label from another business's record.
+        const [tag] = await db
+          .select()
+          .from(schema.tags)
+          .where(
+            and(
+              eq(schema.tags.id, c.req.param("tagId")),
+              eq(schema.tags.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!tag) return c.json({ error: "no such tag" }, 404);
+
+        await db
+          .delete(schema.taggables)
+          .where(
+            and(
+              eq(schema.taggables.tagId, tag.id),
+              eq(schema.taggables.entityType, entityType),
+              eq(schema.taggables.entityId, c.req.param("id")),
+            ),
+          );
+        return c.body(null, 204);
+      },
+    );
+  }
+
+  /**
    * One company, and who and what belongs to it.
    *
    * The other half of the same idea. A contact's company link is only worth

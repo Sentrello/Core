@@ -66,6 +66,207 @@ function ways(primary: string | null, rest: Labelled[] | null): Labelled[] {
   return out;
 }
 
+function Tags({
+  contactId,
+  attached,
+}: {
+  contactId: string;
+  attached: Related["tags"];
+}) {
+  const qc = useQueryClient();
+  const [picking, setPicking] = useState(false);
+  const refresh = () =>
+    qc.invalidateQueries({ queryKey: ["contact-related", contactId] });
+
+  const all = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => api<{ tags: Related["tags"] }>("/api/tags"),
+    enabled: picking,
+  });
+
+  const attach = useMutation({
+    mutationFn: (tagId: string) =>
+      api(`/api/contacts/${contactId}/tags`, {
+        method: "POST",
+        body: JSON.stringify({ tagId }),
+      }),
+    onSuccess: () => {
+      setPicking(false);
+      refresh();
+    },
+  });
+
+  const detach = useMutation({
+    mutationFn: (tagId: string) =>
+      api(`/api/contacts/${contactId}/tags/${tagId}`, { method: "DELETE" }),
+    onSuccess: refresh,
+  });
+
+  const on = new Set(attached.map((t) => t.id));
+  const available = (all.data?.tags ?? []).filter((t) => !on.has(t.id));
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {attached.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => detach.mutate(t.id)}
+          title="Remove"
+          className="rounded-full px-2 py-0.5 text-xs"
+          style={{ background: t.color, color: "#111" }}
+        >
+          {t.name} ×
+        </button>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => setPicking((v) => !v)}
+        className="rounded-full border px-2 py-0.5 text-xs"
+        style={{ borderColor: "var(--border)", ...muted }}
+      >
+        {picking ? "Cancel" : "+ Tag"}
+      </button>
+
+      {picking ? (
+        available.length ? (
+          <div className="flex flex-wrap gap-1">
+            {available.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => attach.mutate(t.id)}
+                className="rounded-full px-2 py-0.5 text-xs"
+                style={{ background: t.color, color: "#111", opacity: 0.75 }}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs" style={muted}>
+            {all.isLoading ? "…" : "No other tags. Create them under Tags."}
+          </span>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function FollowUps({
+  contactId,
+  tasks,
+}: {
+  contactId: string;
+  tasks: Related["tasks"];
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [due, setDue] = useState("");
+  const refresh = () =>
+    qc.invalidateQueries({ queryKey: ["contact-related", contactId] });
+
+  const add = useMutation({
+    mutationFn: () =>
+      api("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          contactId,
+          // An empty date field must not become an invalid one.
+          ...(due ? { dueAt: new Date(due).toISOString() } : {}),
+        }),
+      }),
+    onSuccess: () => {
+      setTitle("");
+      setDue("");
+      refresh();
+    },
+  });
+
+  const toggle = useMutation({
+    mutationFn: ({ id, done }: { id: string; done: boolean }) =>
+      api(`/api/tasks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ done }),
+      }),
+    onSuccess: refresh,
+  });
+
+  // Outstanding first: the point of a follow-up list is what has not happened.
+  const ordered = [...tasks].sort((a, b) => Number(a.done) - Number(b.done));
+
+  return (
+    <Card>
+      <p className="mb-2 font-medium">Follow-ups</p>
+
+      <div className="flex gap-2">
+        <input
+          value={title}
+          placeholder="Call back about the quote"
+          onChange={(e) => setTitle(e.target.value)}
+          className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+          style={{
+            background: "var(--surface-raised)",
+            borderColor: "var(--border)",
+            color: "var(--text)",
+          }}
+        />
+        <input
+          type="date"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="rounded border px-2 py-1 text-sm"
+          style={{
+            background: "var(--surface-raised)",
+            borderColor: "var(--border)",
+            color: "var(--text)",
+          }}
+        />
+      </div>
+      <div className="mt-2">
+        <Button
+          onClick={() => add.mutate()}
+          disabled={!title.trim() || add.isPending}
+        >
+          {add.isPending ? "Adding…" : "Add"}
+        </Button>
+      </div>
+      {add.error ? <ErrorNote error={add.error} /> : null}
+
+      {ordered.length === 0 ? (
+        <p className="mt-3 text-sm" style={muted}>
+          Nothing outstanding.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-1 text-sm">
+          {ordered.map((t) => (
+            <li key={t.id} className="flex items-baseline gap-2">
+              <input
+                type="checkbox"
+                checked={t.done}
+                aria-label={`Done: ${t.title}`}
+                onChange={(e) =>
+                  toggle.mutate({ id: t.id, done: e.target.checked })
+                }
+              />
+              <span className={t.done ? "line-through" : undefined}>
+                {t.title}
+                {t.dueAt ? (
+                  <span className="ml-1 text-xs" style={muted}>
+                    {formatDate(t.dueAt)}
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function Notes({
   contactId,
   notes,
@@ -170,19 +371,7 @@ export function ContactDetail() {
                   "No job title"}
               </p>
             </div>
-            {tags.length ? (
-              <div className="flex flex-wrap gap-1">
-                {tags.map((t) => (
-                  <span
-                    key={t.id}
-                    className="rounded-full px-2 py-0.5 text-xs"
-                    style={{ background: t.color, color: "#111" }}
-                  >
-                    {t.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            <Tags contactId={contact.id} attached={tags} />
           </div>
 
           {/* The company is a record, not a label — following it is the point. */}
@@ -283,27 +472,7 @@ export function ContactDetail() {
           )}
         </Card>
 
-        <Card>
-          <p className="mb-2 font-medium">Follow-ups</p>
-          {tasks.length === 0 ? (
-            <p className="text-sm" style={muted}>
-              Nothing outstanding.
-            </p>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {tasks.map((t) => (
-                <li key={t.id} className={t.done ? "line-through" : undefined}>
-                  {t.title}
-                  {t.dueAt ? (
-                    <span className="ml-1 text-xs" style={muted}>
-                      {formatDate(t.dueAt)}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        <FollowUps contactId={contact.id} tasks={tasks} />
       </div>
     </div>
   );

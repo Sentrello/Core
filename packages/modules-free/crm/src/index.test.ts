@@ -456,3 +456,105 @@ test("a company comes back with its people and its deals", async () => {
   expect(body.contacts.map((p) => p.name)).toEqual(["Sunniva Restrepo"]);
   expect(body.deals.map((d) => d.name)).toEqual(["Surgery 3 fit-out"]);
 });
+
+/**
+ * Tags. `taggables` has no organizationId of its own — it is scoped through
+ * the tag it points at, so these routes are the only thing standing between a
+ * guessed id and labelling another business's records.
+ */
+test("a tag can be put on a contact and taken off again", async () => {
+  const madeTag = await app.request("http://localhost/api/tags", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Repeat customer", color: "#22c55e" }),
+  });
+  const { tag } = (await madeTag.json()) as { tag: { id: string } };
+
+  const madeContact = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Vernon", lastName: "Achebe" }),
+  });
+  const { contact } = (await madeContact.json()) as {
+    contact: { id: string };
+  };
+
+  const attached = await app.request(
+    `http://localhost/api/contacts/${contact.id}/tags`,
+    { method: "POST", headers, body: JSON.stringify({ tagId: tag.id }) },
+  );
+  expect(attached.status).toBe(201);
+
+  let related = (await (
+    await app.request(`http://localhost/api/contacts/${contact.id}/related`, {
+      headers,
+    })
+  ).json()) as { tags: { id: string }[] };
+  expect(related.tags.map((t) => t.id)).toEqual([tag.id]);
+
+  const removed = await app.request(
+    `http://localhost/api/contacts/${contact.id}/tags/${tag.id}`,
+    { method: "DELETE", headers },
+  );
+  expect(removed.status).toBe(204);
+
+  related = (await (
+    await app.request(`http://localhost/api/contacts/${contact.id}/related`, {
+      headers,
+    })
+  ).json()) as { tags: { id: string }[] };
+  expect(related.tags).toHaveLength(0);
+});
+
+test("tagging twice does not label the record twice", async () => {
+  // Somebody clicks twice. A duplicate row would show the same label on the
+  // record two times over.
+  const madeTag = await app.request("http://localhost/api/tags", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Urgent" }),
+  });
+  const { tag } = (await madeTag.json()) as { tag: { id: string } };
+  const madeContact = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Twice", lastName: "Clicked" }),
+  });
+  const { contact } = (await madeContact.json()) as { contact: { id: string } };
+
+  for (let i = 0; i < 2; i += 1) {
+    await app.request(`http://localhost/api/contacts/${contact.id}/tags`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ tagId: tag.id }),
+    });
+  }
+
+  const related = (await (
+    await app.request(`http://localhost/api/contacts/${contact.id}/related`, {
+      headers,
+    })
+  ).json()) as { tags: unknown[] };
+  expect(related.tags).toHaveLength(1);
+});
+
+test("a tag that is not this organisation's cannot be attached", async () => {
+  const madeContact = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Someone", lastName: "Else" }),
+  });
+  const { contact } = (await madeContact.json()) as { contact: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${contact.id}/tags`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        tagId: "00000000-0000-0000-0000-000000000000",
+      }),
+    },
+  );
+  expect(res.status).toBe(404);
+});
