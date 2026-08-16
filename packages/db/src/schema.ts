@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -40,6 +41,20 @@ export const companies = pgTable(
     organizationId: text("organization_id").notNull(),
     name: text("name").notNull(),
     website: text("website"),
+    sector: text("sector"),
+    /** Headcount band, not an exact number — nobody knows the exact number. */
+    size: integer("size"),
+    phone: text("phone"),
+    linkedinUrl: text("linkedin_url"),
+    address: text("address"),
+    city: text("city"),
+    state: text("state"),
+    postcode: text("postcode"),
+    country: text("country"),
+    revenue: text("revenue"),
+    description: text("description"),
+    /** Whose account this is. A platform user, not a separate sales record. */
+    ownerId: text("owner_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [index("companies_org_idx").on(t.organizationId)],
@@ -52,9 +67,38 @@ export const contacts = pgTable(
     organizationId: text("organization_id").notNull(),
     companyId: uuid("company_id"),
     kind: text("kind").notNull().default("customer"), // customer|lead|supplier
+    /**
+     * The display name, always written as first + last.
+     *
+     * Kept rather than replaced: invoices, quotes and the customer portal all
+     * read it, and a CRM rework is no reason to go and change how an invoice
+     * addresses somebody. The CRM writes all three together.
+     */
     name: text("name").notNull(),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    title: text("title"),
+    linkedinUrl: text("linkedin_url"),
+    /** Whose contact this is — a platform user. */
+    ownerId: text("owner_id"),
+    /**
+     * The first email and phone, kept as plain columns.
+     *
+     * Everything that already invoices or emails a contact reads these, and a
+     * business almost always has one address that matters. The labelled lists
+     * below are the rest of them.
+     */
     email: text("email"),
     phone: text("phone"),
+    /**
+     * Every way to reach them: [{ label: "work", value: "..." }].
+     *
+     * A contact with two numbers and nowhere to put the second is the gap
+     * people notice first. A list rather than more columns, because the number
+     * of them is not knowable in advance.
+     */
+    emails: jsonb("emails").$type<{ label: string; value: string }[]>(),
+    phones: jsonb("phones").$type<{ label: string; value: string }[]>(),
     // for customer-portal row scoping: links a portal user to their contact record
     portalUserId: text("portal_user_id"),
     /**
@@ -75,18 +119,74 @@ export const contacts = pgTable(
 );
 
 export const deals = pgTable(
-  "deals", // Pro-gated in UI, table lives in core
+  "deals",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: text("organization_id").notNull(),
-    contactId: uuid("contact_id"),
-    title: text("title").notNull(),
-    stage: text("stage").notNull().default("lead"), // lead|qualified|proposal|won|lost
-    valueCents: integer("value_cents").notNull().default(0),
+    name: text("name").notNull(),
+    companyId: uuid("company_id"),
+    /**
+     * Everyone involved, not one person.
+     *
+     * A deal at a company of any size has several people attached to it, and
+     * the previous single `contactId` meant recording one and losing the rest.
+     */
+    contactIds: jsonb("contact_ids").$type<string[]>().default([]),
+    category: text("category"),
+    stage: text("stage").notNull().default("opportunity"),
+    description: text("description"),
+    amountCents: integer("amount_cents").notNull().default(0),
+    expectedCloseOn: date("expected_close_on"),
+    /**
+     * Where the card sits in its column.
+     *
+     * A kanban that reorders itself on every load is not a kanban — people
+     * arrange the column to mean something, and that arrangement has to
+     * survive a refresh.
+     */
+    position: integer("position").notNull().default(0),
+    /** Filed away rather than deleted: won and lost deals are the history. */
+    archivedAt: timestamp("archived_at"),
     ownerId: text("owner_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (t) => [index("deals_org_idx").on(t.organizationId)],
+  (t) => [
+    index("deals_org_idx").on(t.organizationId),
+    index("deals_stage_idx").on(t.organizationId, t.stage),
+  ],
+);
+
+/**
+ * Notes against a contact or a deal, with files.
+ *
+ * One table rather than Atomic's two, matching how `taggables` already works
+ * here — the shape is identical and two tables would mean two of every query.
+ */
+export const notes = pgTable(
+  "notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    entityType: text("entity_type").notNull(), // "contact" | "deal"
+    entityId: uuid("entity_id").notNull(),
+    text: text("text").notNull(),
+    /**
+     * Files kept on disk under the data directory, recorded here.
+     *
+     * The path, not the bytes: a quote or a signed job sheet in a database
+     * column bloats every backup and every query that touches the row.
+     */
+    attachments: jsonb("attachments")
+      .$type<{ name: string; path: string; size: number; type: string }[]>()
+      .default([]),
+    authorId: text("author_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("notes_org_idx").on(t.organizationId),
+    index("notes_entity_idx").on(t.entityType, t.entityId),
+  ],
 );
 
 export const activities = pgTable(
@@ -109,6 +209,15 @@ export const tasks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: text("organization_id").notNull(),
     title: text("title").notNull(),
+    /** What kind of follow-up: call, email, meeting, other. */
+    type: text("type"),
+    /**
+     * Who it is about. A task with no contact is a to-do list item; a task
+     * with one is the follow-up that stops a deal going quiet, which is the
+     * whole reason a CRM has tasks at all.
+     */
+    contactId: uuid("contact_id"),
+    dealId: uuid("deal_id"),
     dueAt: timestamp("due_at"),
     assigneeId: text("assignee_id"),
     done: boolean("done").notNull().default(false),
@@ -122,6 +231,8 @@ export const tags = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     organizationId: text("organization_id").notNull(),
     name: text("name").notNull(),
+    /** Tags are scanned, not read. Without colour they are just more text. */
+    color: text("color").notNull().default("#94a3b8"),
   },
   (t) => [index("tags_org_idx").on(t.organizationId)],
 );
