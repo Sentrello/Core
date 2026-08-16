@@ -186,6 +186,7 @@
       "dependencies": {
         "@sentrello/auth": "*",
         "@sentrello/db": "*",
+        "@sentrello/email": "*",
         "@sentrello/jobs": "*",
         "@sentrello/licensing-client": "*",
         "@sentrello/module-sdk": "*",
