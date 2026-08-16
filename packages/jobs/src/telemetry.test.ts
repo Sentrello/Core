@@ -1,5 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { band, sendTelemetry, telemetryEnabled } from "./telemetry";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import {
+  band,
+  sendTelemetry,
+  setTelemetryEnabled,
+  telemetryEnabled,
+} from "./telemetry";
 
 /**
  * The property worth defending: nothing leaves the machine unless somebody
@@ -96,4 +103,21 @@ test("user counts are banded", () => {
   expect(band(4)).toBe("2-5");
   expect(band(11)).toBe("11-20");
   expect(band(400)).toBe("21+");
+});
+
+test("the choice saves even where the data directory does not exist yet", async () => {
+  // Found by using it: on a checkout there is no /data, and the toggle in
+  // Settings answered with a 500 and a stack trace. The directory exists on
+  // any real install, so no test that assumed one would ever have caught it.
+  const dir = `${tmpdir()}/sentrello-telemetry-${crypto.randomUUID()}/nested`;
+  process.env.SENTRELLO_DATA_DIR = dir;
+  process.env.SENTRELLO_TELEMETRY = undefined;
+
+  await setTelemetryEnabled(true);
+  expect(await telemetryEnabled()).toBe(true);
+
+  await setTelemetryEnabled(false);
+  expect(await telemetryEnabled()).toBe(false);
+
+  await rm(dir, { recursive: true, force: true });
 });

@@ -8,7 +8,7 @@ import {
   NavigationProvider,
   useNavigation,
 } from "./lib/navigation";
-import { setFormats } from "./lib/ui";
+import { Loading, setFormats } from "./lib/ui";
 import { Bookkeeping } from "./routes/bookkeeping";
 import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
@@ -62,9 +62,10 @@ const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
  * formatted from module-level state, so a screen that paints first would show
  * the wrong currency until something happened to re-render it.
  */
-function useProfile() {
+function useProfile(signedIn: boolean) {
   return useQuery({
     queryKey: ["profile"],
+    enabled: signedIn,
     queryFn: async () => {
       const profile = await api<Profile>("/api/profile");
       setFormats(profile.preferences);
@@ -73,9 +74,13 @@ function useProfile() {
   });
 }
 
-function useMeta() {
+function useMeta(signedIn: boolean) {
   return useQuery({
     queryKey: ["meta"],
+    // Both of these need a session, and asking without one is three failed
+    // requests behind the sign-in form on every load — noise in the log of
+    // whoever is trying to work out why something is wrong.
+    enabled: signedIn,
     queryFn: async () => {
       const meta = await api<Meta>("/api/_meta");
       // Before any module script is requested, so an upgraded instance never
@@ -137,10 +142,12 @@ function CurrentScreen({ nav }: { nav: Meta["nav"] }) {
 }
 
 export default function App() {
-  const { data } = useMeta();
   const session = useSession();
+  const signedIn = Boolean(session.data);
+  const meta = useMeta(signedIn);
+  const data = meta.data;
   const bootstrap = useBootstrap();
-  const profile = useProfile();
+  const profile = useProfile(signedIn);
   const nav = data?.nav ?? [];
 
   // The emailed reset link lands here with no session, and must be reachable
@@ -158,6 +165,9 @@ export default function App() {
     );
   }
   if (!session.data) return <SignIn />;
+  // Signed in, and the shell does not know what to draw yet. Both of these
+  // wait on the session, so they cannot be fetched alongside it.
+  if (meta.isLoading || profile.isLoading) return <Loading />;
 
   // Whatever the server put first, rather than a hard-coded module: a Core
   // instance and a Pro one with a dashboard should each land somewhere that

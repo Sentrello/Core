@@ -1,5 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { db, schema } from "@sentrello/db";
 import { count } from "drizzle-orm";
 
@@ -67,6 +67,10 @@ export function telemetryFixedInEnvironment(): boolean {
 }
 
 export async function setTelemetryEnabled(on: boolean): Promise<void> {
+  // The directory exists on any real install — it is the mounted volume — but
+  // not in a checkout, and not on an instance whose volume was remounted
+  // somewhere new. Creating it turns a stack trace into a saved preference.
+  await mkdir(dirname(choicePath()), { recursive: true });
   await writeFile(choicePath(), on ? "on\n" : "off\n", { mode: 0o600 });
 }
 

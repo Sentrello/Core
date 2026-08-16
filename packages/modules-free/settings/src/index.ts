@@ -154,7 +154,19 @@ export default defineModule({
         const body = (await c.req.json().catch(() => ({}))) as {
           enabled?: unknown;
         };
-        await setTelemetryEnabled(body.enabled === true);
+        try {
+          await setTelemetryEnabled(body.enabled === true);
+        } catch (err) {
+          // A preference that cannot be written is a read-only or misplaced
+          // data directory — which the person reading this can fix, but only
+          // if they are told rather than shown a 500.
+          return c.json(
+            {
+              error: `Could not save that: ${(err as Error).message}. The data directory may be read-only.`,
+            },
+            500,
+          );
+        }
         return c.json({ enabled: await telemetryEnabled() });
       },
     );

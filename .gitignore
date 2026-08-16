@@ -17,3 +17,6 @@ MANIFEST.txt
 
 # local Claude Code settings
 dist-types/
+
+# a checkout's own data directory (see SENTRELLO_DATA_DIR)
+/data/
