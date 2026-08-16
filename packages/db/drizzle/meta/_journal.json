@@ -50,6 +50,13 @@
       "when": 1786852130559,
       "tag": "0006_last_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786859479876,
+      "tag": "0007_flaky_skin",
+      "breakpoints": true
     }
   ]
 }

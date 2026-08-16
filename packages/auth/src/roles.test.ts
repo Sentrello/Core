@@ -1,0 +1,101 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { db, schema } from "@sentrello/db";
+import { eq } from "drizzle-orm";
+import { auth } from "./index";
+import { signUpAsOwner } from "./testing";
+
+/**
+ * Roles a business defines for itself.
+ *
+ * The five built in cover a handyman with three staff. They do not cover a
+ * workshop manager who may see jobs and stock but not the books — and the
+ * previous answer to that was "use Staff and hope", which grants more than
+ * intended rather than less.
+ */
+const suffix = crypto.randomUUID().slice(0, 8);
+const email = `roles-${suffix}@x.test`;
+let headers: Headers;
+let orgId: string;
+
+beforeAll(async () => {
+  const signUp = await signUpAsOwner({
+    email,
+    password: "correct-horse-battery-staple",
+    name: "Owner",
+  });
+  const cookie = signUp.headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-up returned no session cookie");
+  headers = new Headers({ cookie, "content-type": "application/json" });
+
+  const org = await auth.api.createOrganization({
+    body: { name: `Roles ${suffix}`, slug: `roles-${suffix}` },
+    headers,
+  });
+  if (!org) throw new Error("could not create organization");
+  orgId = org.id;
+  await auth.api.setActiveOrganization({
+    body: { organizationId: orgId },
+    headers,
+  });
+});
+
+afterAll(async () => {
+  await db
+    .delete(schema.organizationRole)
+    .where(eq(schema.organizationRole.organizationId, orgId));
+  await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+  await db
+    .delete(schema.organizations)
+    .where(eq(schema.organizations.id, orgId));
+  const [u] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, email));
+  if (u) {
+    await db.delete(schema.session).where(eq(schema.session.userId, u.id));
+    await db.delete(schema.account).where(eq(schema.account.userId, u.id));
+    await db.delete(schema.user).where(eq(schema.user.id, u.id));
+  }
+});
+
+test("a business can define a role the product did not ship", async () => {
+  const created = await auth.api.createOrgRole({
+    body: {
+      organizationId: orgId,
+      role: "workshop-manager",
+      permission: {
+        crm: ["read"],
+        inventory: ["read", "create", "update"],
+        dashboard: ["read"],
+      },
+    },
+    headers,
+  });
+  expect(created).toBeTruthy();
+
+  const roles = await auth.api.listOrgRoles({
+    query: { organizationId: orgId },
+    headers,
+  });
+  const names = (roles as { role: string }[]).map((r) => r.role);
+  expect(names).toContain("workshop-manager");
+});
+
+test("the custom role is stored where permission checks will find it", async () => {
+  // hasPermission reads this table and merges it with the compiled-in roles,
+  // which is what lets requirePermission stay exactly as it was.
+  const rows = await db
+    .select()
+    .from(schema.organizationRole)
+    .where(eq(schema.organizationRole.organizationId, orgId));
+  const row = rows.find((r) => r.role === "workshop-manager");
+  expect(row).toBeTruthy();
+  const permission = JSON.parse(row?.permission ?? "{}") as Record<
+    string,
+    string[]
+  >;
+  expect(permission.inventory).toContain("update");
+  // Not granted, and therefore absent — a role is what it says, not a
+  // superset of somebody else's.
+  expect(permission.bookkeeping).toBeUndefined();
+});

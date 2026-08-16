@@ -107,6 +107,20 @@ export const auth = betterAuth({
     organization({
       ac,
       roles,
+      /**
+       * Roles a business can define for itself.
+       *
+       * The five built in cover a handyman with three staff; they do not cover
+       * a business with a workshop manager who may see jobs and stock but not
+       * the books. Better Auth stores these in a table and merges them with
+       * the built-ins when it checks a permission, so `requirePermission`
+       * needs no changes at all.
+       *
+       * A new role cannot grant more than its creator already holds, which is
+       * the property that makes this safe to expose to an admin rather than
+       * only to us.
+       */
+      dynamicAccessControl: { enabled: true },
       creatorRole: "admin", // instance owner
       membershipLimit: 100,
       // Better Auth's organization IS the tenant boundary from Build Plan §6.1;

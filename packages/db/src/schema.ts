@@ -510,3 +510,27 @@ export const formSubmissions = pgTable(
     index("form_submissions_form_idx").on(t.formId),
   ],
 );
+
+/**
+ * Roles a business defined for itself.
+ *
+ * Better Auth's dynamic access control reads this when checking a permission
+ * and merges what it finds with the roles compiled in. Written by its own
+ * endpoints, never by us — the shape, including permissions being JSON in a
+ * text column, is its contract rather than a choice.
+ */
+export const organizationRole = pgTable(
+  "organization_role",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    role: text("role").notNull(),
+    permission: text("permission").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at"),
+  },
+  (t) => [
+    index("organization_role_org_idx").on(t.organizationId),
+    index("organization_role_name_idx").on(t.role),
+  ],
+);
