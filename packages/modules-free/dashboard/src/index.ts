@@ -4,8 +4,16 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
-import { defineModule } from "@sentrello/module-sdk";
+import { defineMiddleware, defineModule } from "@sentrello/module-sdk";
 import { and, eq, isNull } from "drizzle-orm";
+import { readHealth } from "./health";
+import {
+  WIDGETS,
+  normalizeLayout,
+  readInsights,
+  readLayout,
+  writeLayout,
+} from "./pro";
 
 /**
  * The first screen after signing in.
@@ -16,9 +24,10 @@ import { and, eq, isNull } from "drizzle-orm";
  * has gone past its date, a quote nobody answered, a follow-up that was due
  * yesterday.
  *
- * Everything here reads tables Core owns. A Free instance has no Pro modules
- * and must still land somewhere useful, which is exactly the case a dashboard
- * built on Pro reporting would fail.
+ * One module, two dashboards, decided by entitlement rather than by shipping
+ * two of them. The figures come from the modules Core owns, so a Free instance
+ * lands somewhere useful — and a Pro instance sees the same figures without
+ * the upgrade prompt, because not being sold to is part of what was bought.
  */
 
 interface Attention {
@@ -134,7 +143,32 @@ export default defineModule({
             })),
         ];
 
+        const pro = ctx.entitled({ tier: "pro" });
+
         return c.json({
+          tier: pro ? "pro" : "free",
+          /**
+           * The upgrade prompt, and the sponsor slot beside it.
+           *
+           * Free only. A business that has paid should not be advertised to on
+           * the first screen it opens every morning — that is a large part of
+           * what paying is for, and showing it anyway would make the purchase
+           * feel unfinished.
+           */
+          promote: pro
+            ? null
+            : {
+                url:
+                  process.env.SENTRELLO_UPGRADE_URL ?? "https://sentrello.com",
+                headline: "Do more with Sentrello Pro",
+                points: [
+                  "Reports on where the money actually goes",
+                  "Optional modules: scheduling, projects, stock, staff",
+                  "Your own branding on invoices and the customer portal",
+                ],
+                sponsorSlot: true,
+              },
+          health: await readHealth(),
           money: {
             owedCents,
             overdueCents,
@@ -151,6 +185,65 @@ export default defineModule({
           // not received, which outranks a quote nobody has answered.
           attention: attention.slice(0, 12),
         });
+      },
+    );
+
+    /**
+     * The Pro half: twelve months of ledger, and the layout it is drawn in.
+     *
+     * Registered on every instance and answered only on entitled ones. The
+     * loader gates whole modules; this module is Free and grows a second half,
+     * so the gate has to be here — and it has to be checked per request,
+     * because a licence can arrive or lapse while the process is running.
+     */
+    const proOnly = defineMiddleware(async (c, next) => {
+      // 404 rather than 403: on a Free instance this endpoint does not exist,
+      // which is also what the module boot tests assert for anything gated.
+      if (!ctx.entitled({ tier: "pro" })) return c.notFound();
+      await next();
+    });
+
+    ctx.app.get(
+      "/api/dashboard/insights",
+      requireSession(),
+      requirePermission({ dashboard: ["read"] }),
+      proOnly,
+      async (c) =>
+        c.json(await readInsights(activeOrganizationId(c.get("session")))),
+    );
+
+    ctx.app.get(
+      "/api/dashboard/layout",
+      requireSession(),
+      requirePermission({ dashboard: ["read"] }),
+      proOnly,
+      async (c) => {
+        const session = c.get("session");
+        return c.json({
+          tabs: await readLayout(
+            activeOrganizationId(session),
+            session.user.id,
+          ),
+          widgets: WIDGETS,
+        });
+      },
+    );
+
+    ctx.app.put(
+      "/api/dashboard/layout",
+      requireSession(),
+      // Arranging your own screen is not an administrative act, so it needs no
+      // permission beyond the one that let you see the screen.
+      requirePermission({ dashboard: ["read"] }),
+      proOnly,
+      async (c) => {
+        const session = c.get("session");
+        const body = (await c.req.json().catch(() => ({}))) as {
+          tabs?: unknown;
+        };
+        const tabs = normalizeLayout(body.tabs);
+        await writeLayout(activeOrganizationId(session), session.user.id, tabs);
+        return c.json({ tabs });
       },
     );
   },

@@ -7,6 +7,9 @@ import { eq } from "drizzle-orm";
 import dashboard from "./index";
 
 const app = registerForTest(dashboard);
+// The same module, on an instance with no Pro licence. One dashboard with two
+// faces, so both faces have to be exercised.
+const freeApp = registerForTest(dashboard, undefined, (need) => !need.tier);
 let headers: Headers;
 let orgId: string;
 
@@ -42,6 +45,9 @@ afterAll(async () => {
     .delete(schema.invoices)
     .where(eq(schema.invoices.organizationId, orgId));
   await db.delete(schema.tasks).where(eq(schema.tasks.organizationId, orgId));
+  await db
+    .delete(schema.userPreferences)
+    .where(eq(schema.userPreferences.organizationId, orgId));
   await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
   await db
     .delete(schema.organizations)
@@ -152,6 +158,134 @@ test("a follow-up that was due yesterday needs attention", async () => {
       (a) => a.kind === "task" && a.summary === "Chase the Brixton quote",
     ),
   ).toBe(true);
+});
+
+/**
+ * The upgrade prompt is the Free dashboard's job and only its job.
+ *
+ * Showing it to somebody who has already paid is worse than a wasted panel: it
+ * makes the purchase feel unfinished, on the screen they open every morning.
+ */
+test("Pro is not sold to, Free is", async () => {
+  const pro = (await (await get()).json()) as {
+    tier: string;
+    promote: unknown;
+  };
+  expect(pro.tier).toBe("pro");
+  expect(pro.promote).toBeNull();
+
+  const free = (await (
+    await freeApp.request("http://localhost/api/dashboard", { headers })
+  ).json()) as {
+    tier: string;
+    promote: { url: string; points: string[]; sponsorSlot: boolean } | null;
+  };
+  expect(free.tier).toBe("free");
+  expect(free.promote?.sponsorSlot).toBe(true);
+  expect(free.promote?.points.length).toBeGreaterThan(0);
+});
+
+/** Both tiers get it: nobody else is watching the machine they self-host on. */
+test("the server reports on itself", async () => {
+  const body = (await (await get()).json()) as {
+    health: {
+      version: string;
+      uptimeSeconds: number;
+      database: { reachable: boolean };
+    };
+  };
+  expect(body.health.database.reachable).toBe(true);
+  expect(body.health.uptimeSeconds).toBeGreaterThanOrEqual(0);
+  expect(typeof body.health.version).toBe("string");
+});
+
+/**
+ * The Pro half is not merely hidden on Free — it is not there.
+ *
+ * Hiding a panel in the browser while the endpoint still answers is how a
+ * paid feature becomes a free one for anybody who opens the network tab.
+ */
+test("the Pro endpoints do not exist without a Pro licence", async () => {
+  for (const path of ["/api/dashboard/insights", "/api/dashboard/layout"]) {
+    const res = await freeApp.request(`http://localhost${path}`, { headers });
+    expect(res.status).toBe(404);
+  }
+  expect((await get()).status).toBe(200);
+  expect(
+    (await app.request("http://localhost/api/dashboard/insights", { headers }))
+      .status,
+  ).toBe(200);
+});
+
+test("insights cover every month in the window, including the quiet ones", async () => {
+  const body = (await (
+    await app.request("http://localhost/api/dashboard/insights", { headers })
+  ).json()) as {
+    months: { month: string; netCents: number }[];
+    aging: { bucket: string; cents: number }[];
+  };
+  expect(body.months).toHaveLength(12);
+  // Sorted and gapless: a series that skips an empty month draws a line
+  // sloping through a gap the business never had.
+  expect(
+    [...body.months].sort((a, b) => a.month.localeCompare(b.month)),
+  ).toEqual(body.months);
+  // INV-100 is 60,000 and one day past its date; INV-101 is not yet due.
+  const late = body.aging.find((a) => a.bucket === "1–30 days");
+  expect(late?.cents).toBe(60_000);
+  expect(body.aging.find((a) => a.bucket === "Not yet due")?.cents).toBe(
+    20_000,
+  );
+});
+
+test("a layout survives a save, and cannot grow past six tabs", async () => {
+  const tabs = Array.from({ length: 9 }, (_, i) => ({
+    name: `Tab ${i}`,
+    widgets: ["money", "not-a-widget"],
+  }));
+  const saved = (await (
+    await app.request("http://localhost/api/dashboard/layout", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ tabs }),
+    })
+  ).json()) as { tabs: { name: string; widgets: string[] }[] };
+
+  expect(saved.tabs).toHaveLength(6);
+  // Unknown panels are dropped rather than refused: a layout saved by a newer
+  // version should lose what it cannot draw and keep the rest.
+  expect(saved.tabs[0]?.widgets).toEqual(["money"]);
+
+  const read = (await (
+    await app.request("http://localhost/api/dashboard/layout", { headers })
+  ).json()) as { tabs: { name: string }[]; widgets: string[] };
+  expect(read.tabs).toHaveLength(6);
+  expect(read.tabs[0]?.name).toBe("Tab 0");
+  expect(read.widgets).toContain("revenue-trend");
+
+  // Saving twice is the normal case — every rearrange is a save — and must not
+  // leave two answers to a question that has one.
+  await app.request("http://localhost/api/dashboard/layout", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ tabs: [{ name: "Only", widgets: ["health"] }] }),
+  });
+  const again = (await (
+    await app.request("http://localhost/api/dashboard/layout", { headers })
+  ).json()) as { tabs: { name: string }[] };
+  expect(again.tabs).toHaveLength(1);
+  expect(again.tabs[0]?.name).toBe("Only");
+});
+
+test("an empty layout resets rather than leaving a blank screen", async () => {
+  const body = (await (
+    await app.request("http://localhost/api/dashboard/layout", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ tabs: [] }),
+    })
+  ).json()) as { tabs: unknown[] };
+  expect(body.tabs.length).toBeGreaterThan(0);
 });
 
 test("a completed follow-up is not still asking to be done", async () => {

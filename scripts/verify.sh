@@ -15,6 +15,11 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
+# Bun is not always on the PATH of whatever shell runs this — a hook, a CI
+# step, an editor task. A gate that silently reports "bun: command not found"
+# as a test failure is worse than no gate.
+export PATH="$HOME/.bun/bin:$PATH"
+command -v bun >/dev/null || { echo "  bun not found on PATH"; exit 1; }
 failed=0
 
 step() {
@@ -31,26 +36,16 @@ step() {
   fi
 }
 
-# Formatting is applied, and then the tree is compared against what it was.
+# Nothing here writes to the tree.
 #
-# Applying and carrying on looks helpful and is a trap: the gate passes, the
-# fix is never staged, and whatever is committed or tagged next is the version
-# that was never checked. That is exactly how a v0.3.0 tag ended up pointing at
-# a package.json its own CI rejects — verify ran, wrote the fix, said ready,
-# and the fix stayed in the working tree.
+# This used to apply formatting and then compare `git status --porcelain`
+# against what it was, which cannot see a change to a file that was already
+# modified — every file being verified before a commit. So the gate wrote a
+# fix, saw an unchanged porcelain line, and said ready: that is how a v0.3.0
+# tag ended up pointing at a package.json its own CI rejects.
 #
-# So a write is now a failure. Noisy, but the alternative is silent and wrong.
-if [ -x ./node_modules/.bin/biome ]; then
-  before="$(git status --porcelain 2>/dev/null)"
-  ./node_modules/.bin/biome check --write . >/dev/null 2>&1 || true
-  after="$(git status --porcelain 2>/dev/null)"
-  if [ "$before" != "$after" ]; then
-    printf '  %-12s %s\n' "formatting" "APPLIED — review and stage it, then run again"
-    git status --porcelain | sed 's/^/      /'
-    failed=1
-  fi
-fi
-
+# The lint step below already fails on anything the formatter would fix, so
+# checking is the whole job. Run `bunx biome check --write .` to apply.
 step "typecheck" ./node_modules/.bin/tsc -b --force
 if [ -x ./node_modules/.bin/biome ]; then
   step "lint" ./node_modules/.bin/biome check .

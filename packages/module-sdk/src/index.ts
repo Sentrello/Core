@@ -134,10 +134,19 @@ export function createModuleApp(): Hono<SentrelloEnv> {
 export function registerForTest(
   module: SentrelloModule,
   app: Hono<SentrelloEnv> = createModuleApp(),
+  /**
+   * What the licence is pretending to allow.
+   *
+   * Entitled to everything by default, which is what a module's own tests
+   * want. Overridable because a module that behaves differently on Free than
+   * on Pro — the dashboard does — has no way to test the Free half otherwise,
+   * and the Free half is the one every new instance sees.
+   */
+  entitled: (need: EntitlementNeed) => boolean = () => true,
 ): Hono<SentrelloEnv> {
   module.register({
     app,
-    entitled: () => true,
+    entitled,
     registerNav: () => {},
     registerPermission: () => {},
     registerJob: () => {},
