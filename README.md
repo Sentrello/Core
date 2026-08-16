@@ -35,6 +35,10 @@ Manage it afterwards with `sentrello status | update | rollback | backup |
 restore | logs`. Updates can also be applied from Settings, and every update
 takes a database backup before it starts and refuses to continue without one.
 
+**[Running it yourself](docs/self-hosting.md)** covers TLS, email, backups,
+updates and what to look at when something is wrong — including exactly what an
+instance does and does not send anywhere.
+
 ---
 
 ## What it looks like
