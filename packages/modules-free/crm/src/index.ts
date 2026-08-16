@@ -6,6 +6,7 @@ import {
 import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, desc, eq } from "drizzle-orm";
+import { registerAttachments } from "./attachments";
 
 /**
  * Org-scoped CRUD for one table. Every query carries the organizationId filter
@@ -884,5 +885,6 @@ export default defineModule({
       crud(ctx, resource);
     }
     registerCrmScreens(ctx);
+    registerAttachments(ctx);
   },
 });

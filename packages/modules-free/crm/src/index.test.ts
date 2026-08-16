@@ -14,6 +14,10 @@ const app = new Hono<SentrelloEnv>();
 let orgId: string;
 let headers: Headers;
 
+// Attachments are written under the data directory, which defaults to /data —
+// not somewhere a test may write.
+process.env.SENTRELLO_DATA_DIR = `/tmp/sentrello-test-${crypto.randomUUID().slice(0, 8)}`;
+
 beforeAll(async () => {
   crm.register({
     app,
@@ -930,4 +934,88 @@ test("an empty import says so instead of reporting success", async () => {
     body: JSON.stringify({ rows: [] }),
   });
   expect(res.status).toBe(400);
+});
+
+/**
+ * Attachments end to end. The upload path is where a filename could reach the
+ * filesystem, and the download path is where an uploaded file could execute
+ * against this origin — so both are exercised rather than only the happy one.
+ */
+test("a file attaches to a note and comes back as a download", async () => {
+  const made = (await (
+    await app.request("http://localhost/api/notes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        entityType: "contact",
+        entityId: "00000000-0000-0000-0000-000000000001",
+        text: "Quote attached",
+      }),
+    })
+  ).json()) as { note: { id: string } };
+
+  const form = new FormData();
+  form.append(
+    "file",
+    new File(["<script>alert(1)</script>"], "../../evil.html", {
+      type: "text/html",
+    }),
+  );
+  const up = await app.request(
+    `http://localhost/api/notes/${made.note.id}/attachments`,
+    // Only the cookie: FormData sets its own content-type with the multipart
+    // boundary, and overriding it makes the body unparseable.
+    {
+      method: "POST",
+      headers: { cookie: headers.get("cookie") ?? "" },
+      body: form,
+    },
+  );
+  expect(up.status).toBe(201);
+
+  const body = (await up.json()) as {
+    note: { attachments: { name: string; path: string }[] };
+  };
+  const [file] = body.note.attachments;
+  // The displayed name loses its directory, and the stored path is ours.
+  expect(file?.name).toBe("evil.html");
+  expect(file?.path).not.toContain("..");
+
+  const down = await app.request(
+    `http://localhost/api/notes/${made.note.id}/attachments/0`,
+    { headers },
+  );
+  expect(down.status).toBe(200);
+  // Never text/html, whatever was uploaded — otherwise this runs as us.
+  expect(down.headers.get("content-type")).toBe("application/octet-stream");
+  expect(down.headers.get("content-disposition")).toContain("attachment");
+  expect(down.headers.get("x-content-type-options")).toBe("nosniff");
+});
+
+test("an attachment on another organisation's note is not found", async () => {
+  const res = await app.request(
+    "http://localhost/api/notes/00000000-0000-0000-0000-000000000000/attachments/0",
+    { headers },
+  );
+  expect(res.status).toBe(404);
+});
+
+test("an index that does not exist is not found rather than a crash", async () => {
+  const made = (await (
+    await app.request("http://localhost/api/notes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        entityType: "contact",
+        entityId: "00000000-0000-0000-0000-000000000002",
+        text: "No files here",
+      }),
+    })
+  ).json()) as { note: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/notes/${made.note.id}/attachments/7`,
+    { headers },
+  );
+  expect(res.status).toBe(404);
 });

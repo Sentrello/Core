@@ -59,7 +59,12 @@ interface Related {
     amountCents: number;
     expectedCloseOn: string | null;
   }[];
-  notes: { id: string; text: string; createdAt: string }[];
+  notes: {
+    id: string;
+    text: string;
+    createdAt: string;
+    attachments: { name: string; path: string; size: number }[] | null;
+  }[];
   tasks: { id: string; title: string; dueAt: string | null; done: boolean }[];
   tags: { id: string; name: string; color: string }[];
 }
@@ -486,6 +491,47 @@ function FollowUps({
   );
 }
 
+/** Attaching a file to a note that already exists. */
+function Attach({ noteId, onDone }: { noteId: string; onDone: () => void }) {
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      // No content-type header: FormData sets its own with the boundary, and
+      // overriding it makes the body unparseable at the other end.
+      const res = await fetch(`/api/notes/${noteId}/attachments`, {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        throw new Error(
+          ((await res.json().catch(() => ({}))) as { error?: string }).error ??
+            "That file could not be attached.",
+        );
+      }
+    },
+    onSuccess: onDone,
+  });
+
+  return (
+    <>
+      <label className="cursor-pointer text-xs underline" style={muted}>
+        {upload.isPending ? "Attaching…" : "Attach a file"}
+        <input
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) upload.mutate(file);
+          }}
+        />
+      </label>
+      {upload.error ? <ErrorNote error={upload.error} /> : null}
+    </>
+  );
+}
+
 function Notes({
   contactId,
   notes,
@@ -547,8 +593,38 @@ function Notes({
               style={{ borderColor: "var(--border)" }}
             >
               <p className="whitespace-pre-wrap">{n.text}</p>
-              <p className="mt-0.5 text-xs" style={muted}>
+
+              {n.attachments?.length ? (
+                <ul className="mt-1 space-y-0.5">
+                  {n.attachments.map((a, i) => (
+                    <li key={a.path} className="text-xs">
+                      <a
+                        href={`/api/notes/${n.id}/attachments/${i}`}
+                        className="underline"
+                      >
+                        {a.name}
+                      </a>
+                      <span className="ml-1" style={muted}>
+                        {Math.max(1, Math.round(a.size / 1024))} KB
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <p
+                className="mt-0.5 flex items-center gap-2 text-xs"
+                style={muted}
+              >
                 {formatDate(n.createdAt)}
+                <Attach
+                  noteId={n.id}
+                  onDone={() =>
+                    qc.invalidateQueries({
+                      queryKey: ["contact-related", contactId],
+                    })
+                  }
+                />
               </p>
             </div>
           ))
