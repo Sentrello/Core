@@ -18,6 +18,10 @@ export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/mod-shop",
   // sentrello.com only, and additionally gated by SENTRELLO_CONTROL_PLANE=true
   "@sentrello/control-plane",
+  // bmp.sentrello.com only: Sentrello's own console, gated again by
+  // SENTRELLO_MASTER=true. It is never built into any customer bundle, so on
+  // every other host this name simply does not resolve.
+  "@sentrello/master",
   "@sentrello/mod-hr",
   "@sentrello/mod-inventory",
   "@sentrello/mod-projects",
