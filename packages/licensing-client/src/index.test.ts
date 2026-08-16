@@ -1,14 +1,31 @@
 import { expect, test } from "bun:test";
-import { SignJWT, importPKCS8, importSPKI } from "jose";
+import {
+  SignJWT,
+  exportPKCS8,
+  exportSPKI,
+  generateKeyPair,
+  importPKCS8,
+  importSPKI,
+} from "jose";
 import {
   SENTRELLO_LICENSE_PUBLIC_KEY,
   makeEntitlementGate,
   verifyLicenseToken,
 } from "./index";
 
+/**
+ * A keypair made here, for this run.
+ *
+ * These used to be read from `secrets/`, which holds the real signing key and
+ * is absent from a fresh clone — so a stranger's first `bun test` failed on a
+ * private key they could not have, and were never meant to. Generating one
+ * proves the same properties, needs no setup, and removes any reason to put a
+ * real signing key where a test can reach it.
+ */
 const ALG = "EdDSA";
-const priv = await Bun.file("secrets/license_private.pem").text();
-const pub = await Bun.file("secrets/license_public.pem").text();
+const pair = await generateKeyPair(ALG, { extractable: true });
+const priv = await exportPKCS8(pair.privateKey);
+const pub = await exportSPKI(pair.publicKey);
 
 async function mint(claims: Record<string, unknown>, exp = "72h") {
   const key = await importPKCS8(priv, ALG);
