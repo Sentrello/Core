@@ -19,6 +19,19 @@ import * as schema from "./schema";
  * Returns null when the quote is not this organization's, so the caller
  * answers 404 rather than leaking whether an id exists.
  */
+/**
+ * When an invoice raised from a quote falls due.
+ *
+ * Thirty days, because an invoice with no due date can never be late: it sits
+ * outside every aging bucket, the overdue chase skips it, and it never reaches
+ * the dashboard's overdue figure. A quote carries no terms of its own, so this
+ * is the assumption — worth making configurable once anyone asks for different
+ * terms.
+ */
+export function defaultDueDate(from = new Date()): Date {
+  return new Date(from.getTime() + 30 * 24 * 60 * 60 * 1000);
+}
+
 export async function convertQuoteToInvoice(
   organizationId: string,
   quoteId: string,
@@ -50,6 +63,11 @@ export async function convertQuoteToInvoice(
         currency: quote.currency,
         number: await nextDocumentNumber(tx, organizationId, "invoice"),
         status: "open",
+        // Without this, converting a quote produced an invoice that could
+        // never be chased. The portal's own acceptance path set one; this one
+        // did not, so which screen accepted the work decided whether the
+        // business would ever be reminded to ask for the money.
+        dueDate: defaultDueDate(),
         subtotalCents: quote.subtotalCents,
         taxCents: quote.taxCents,
         totalCents: quote.totalCents,

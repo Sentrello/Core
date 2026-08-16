@@ -4,7 +4,7 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
-import { convertQuoteToInvoice } from "@sentrello/db/documents";
+import { convertQuoteToInvoice, defaultDueDate } from "@sentrello/db/documents";
 import {
   CORE_ACCOUNTS,
   ensureAccount,
@@ -86,18 +86,6 @@ async function sendReceipt(
   } catch (err) {
     console.error("[invoicing] sending the receipt failed", err);
   }
-}
-
-/**
- * When an invoice raised from a quote falls due.
- *
- * Thirty days, because an invoice with no due date can never be late: it sits
- * outside every aging bucket and never appears on the list of who owes you.
- * A quote carries no terms of its own, so this is the assumption — worth
- * making configurable once anyone asks for different terms.
- */
-function defaultDueDate(): Date {
-  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 }
 
 /** Generous for a customer reading their own bill, hostile to a flood. */

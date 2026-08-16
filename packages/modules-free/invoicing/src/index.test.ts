@@ -931,3 +931,47 @@ test("a wrong token is refused the same way whether or not it exists", async () 
   expect(missing.status).toBe(malformed.status);
   resetRateLimits();
 });
+
+/**
+ * An invoice with no due date can never be late.
+ *
+ * It sits outside every aging bucket, the overdue chase skips it, and it never
+ * reaches the dashboard's overdue figure — so it is money the business is
+ * never reminded to ask for. Found by converting a quote the way somebody
+ * would on their first afternoon: the portal's acceptance path set a date and
+ * the staff conversion did not, which meant which screen accepted the work
+ * decided whether the bill would ever be chased.
+ */
+test("converting a quote produces an invoice that can be chased", async () => {
+  const quoted = await app.request("http://localhost/api/quotes", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      contactId,
+      currency: "USD",
+      lines: [
+        {
+          description: "Oak worktop",
+          quantity: 1,
+          unitPrice: 128000,
+          taxRateBp: 875,
+        },
+      ],
+    }),
+  });
+  const { quote } = (await quoted.json()) as { quote: { id: string } };
+
+  const converted = await app.request(
+    `http://localhost/api/quotes/${quote.id}/convert`,
+    { method: "POST", headers },
+  );
+  const { invoice } = (await converted.json()) as {
+    invoice: { dueDate: string | null };
+  };
+
+  expect(invoice.dueDate).not.toBeNull();
+  const days = Math.round(
+    (new Date(invoice.dueDate as string).getTime() - Date.now()) / 86_400_000,
+  );
+  expect(days).toBe(30);
+});
