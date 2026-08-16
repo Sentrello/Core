@@ -90,6 +90,8 @@ interface UpdatesResponse {
   rollbackTo: string | null;
   updateAvailable: boolean;
   canApply: boolean;
+  /** Something other than this screen owns the version — a deploy script. */
+  managedExternally: boolean;
   status: { state: string; message?: string; version?: string; at?: string };
 }
 
@@ -485,7 +487,13 @@ export function Settings() {
           itself. Where the host has no agent to do it, saying so beats a
           button that appears to work and silently does nothing.
         */}
-        {updates.data?.updateAvailable ? (
+        {updates.data?.managedExternally ? (
+          <p className="mt-1 text-sm" style={muted}>
+            This instance's version is set by its deploy rather than from here.
+            Updating it from this screen would replace the image it runs, so the
+            button is deliberately absent.
+          </p>
+        ) : updates.data?.updateAvailable ? (
           updates.data.canApply ? (
             <>
               <p className="mt-1 text-sm">

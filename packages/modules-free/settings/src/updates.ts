@@ -76,6 +76,19 @@ export async function latestVersion(): Promise<string | null> {
 }
 
 /**
+ * Whether something other than this button is responsible for the version.
+ *
+ * Sentrello's own hosts run an image built by a deploy script, with the
+ * control plane and Master inside it. Pressing "update" there would swap that
+ * image for the public Core one and take sentrello.com's licence server down
+ * with it — so the button has to know, and say so, rather than being quietly
+ * unavailable because the version string happens to be unreadable.
+ */
+export function managedExternally(): boolean {
+  return (process.env.SENTRELLO_MANAGED ?? "").trim() !== "";
+}
+
+/**
  * Newer, older or the same.
  *
  * Compared as numbers per segment, so 0.1.9 is older than 0.1.10 — a string

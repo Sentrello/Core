@@ -22,6 +22,7 @@ import {
   currentVersion,
   isNewer,
   latestVersion,
+  managedExternally,
   readStatus,
   requestRollback,
   requestSync,
@@ -194,6 +195,14 @@ export default defineModule({
           // Without an agent the button would write a file nobody reads, so
           // the screen needs to know to explain instead of offering.
           canApply: await agentPresent(),
+          /**
+           * Somebody else owns this instance's version.
+           *
+           * Sentrello's own hosts run an image a deploy script builds, with
+           * the control plane inside it. Updating from here would swap it for
+           * the public Core image and take the licence server down with it.
+           */
+          managedExternally: managedExternally(),
           status: await readStatus(),
         });
       },
@@ -338,6 +347,18 @@ export default defineModule({
               error: "could not reach the licence server to check for updates",
             },
             503,
+          );
+        }
+        if (managedExternally()) {
+          // Refused here as well as hidden on the screen: this is the request
+          // that would replace a host's whole image, and a hidden button is
+          // not a guard.
+          return c.json(
+            {
+              error:
+                "this instance's version is managed by its deploy, not from here",
+            },
+            409,
           );
         }
         if (!isNewer(latest, current)) {

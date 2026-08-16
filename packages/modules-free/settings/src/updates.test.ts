@@ -2,7 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isNewer, readStatus, rollbackTarget } from "./updates";
+import {
+  isNewer,
+  managedExternally,
+  readStatus,
+  rollbackTarget,
+} from "./updates";
 
 /**
  * Version comparison, which is the part of an update button that quietly gets
@@ -114,4 +119,22 @@ test("it does not offer a rollback the host would refuse", async () => {
 
   await writeFile(join(dir, "rollback-target"), "0.1.28\n");
   expect(await rollbackTarget()).toBe("0.1.28");
+});
+
+/**
+ * Our own hosts run an image a deploy script builds, with the control plane
+ * inside it. Updating from Settings there would swap it for the public Core
+ * image and take sentrello.com's licence server down with it.
+ */
+test("a host whose version is set by its deploy says so", () => {
+  const saved = process.env.SENTRELLO_MANAGED;
+  try {
+    process.env.SENTRELLO_MANAGED = undefined;
+    expect(managedExternally()).toBe(false);
+
+    process.env.SENTRELLO_MANAGED = "script";
+    expect(managedExternally()).toBe(true);
+  } finally {
+    process.env.SENTRELLO_MANAGED = saved;
+  }
 });
