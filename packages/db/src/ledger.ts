@@ -12,6 +12,15 @@ export const CORE_ACCOUNTS = {
     type: "asset",
   },
   salesIncome: { code: "4000", name: "Sales Income", type: "income" },
+  /**
+   * What was given away, kept apart from what was never earned.
+   *
+   * A contra-revenue account rather than netting discounts off income: a
+   * business that discounted £4,000 to earn £40,000 wants to see both numbers,
+   * and a P&L showing only £36,000 of income cannot answer whether the codes
+   * were worth running.
+   */
+  salesDiscounts: { code: "4100", name: "Sales Discounts", type: "expense" },
   taxPayable: { code: "2200", name: "Tax Payable", type: "liability" },
   /** Where an expense lands when it has not been given an account of its own. */
   generalExpense: { code: "6000", name: "General Expenses", type: "expense" },
