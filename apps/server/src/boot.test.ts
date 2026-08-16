@@ -168,6 +168,7 @@ test("/healthz boots and reports Free when no token is present", async () => {
       "invoicing",
       "bookkeeping",
       "settings",
+      "profile",
     ],
     // A bundle that will not load is reported rather than only logged: it
     // takes every feature of that module with it.

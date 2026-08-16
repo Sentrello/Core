@@ -8,6 +8,7 @@ import {
   NavigationProvider,
   useNavigation,
 } from "./lib/navigation";
+import { setFormats } from "./lib/ui";
 import { Bookkeeping } from "./routes/bookkeeping";
 import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
@@ -19,6 +20,7 @@ import { ResetPassword } from "./routes/forgot-password";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
+import { type Profile, ProfileScreen } from "./routes/profile";
 import { Quotes } from "./routes/quotes";
 import { Roles } from "./routes/roles";
 import { Settings } from "./routes/settings";
@@ -43,6 +45,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
   forms: Forms,
   settings: Settings,
   roles: Roles,
+  profile: ProfileScreen,
 };
 
 /** Screens that show a single record, chosen when navigation names one. */
@@ -51,6 +54,24 @@ const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
   companies: CompanyDetail,
   deals: DealDetail,
 };
+
+/**
+ * The reader's own preferences, fetched once and handed to the formatters.
+ *
+ * Before the first screen renders rather than inside one: dates and money are
+ * formatted from module-level state, so a screen that paints first would show
+ * the wrong currency until something happened to re-render it.
+ */
+function useProfile() {
+  return useQuery({
+    queryKey: ["profile"],
+    queryFn: async () => {
+      const profile = await api<Profile>("/api/profile");
+      setFormats(profile.preferences);
+      return profile;
+    },
+  });
+}
 
 function useMeta() {
   return useQuery({
@@ -119,6 +140,7 @@ export default function App() {
   const { data } = useMeta();
   const session = useSession();
   const bootstrap = useBootstrap();
+  const profile = useProfile();
   const nav = data?.nav ?? [];
 
   // The emailed reset link lands here with no session, and must be reachable
@@ -140,7 +162,11 @@ export default function App() {
   // Whatever the server put first, rather than a hard-coded module: a Core
   // instance and a Pro one with a dashboard should each land somewhere that
   // exists, and neither should land on a module the licence did not load.
-  const landing = nav.find((n) => n.id !== "settings") ?? nav[0];
+  const chosen = profile.data?.preferences.landingPage;
+  const landing =
+    (chosen ? nav.find((n) => n.id === chosen) : undefined) ??
+    nav.find((n) => n.id !== "settings") ??
+    nav[0];
   if (!landing) return null;
 
   return (

@@ -16,7 +16,12 @@ export interface EntitlementNeed {
  * on the SDK, never the reverse).
  */
 export interface SentrelloSession {
-  session: { activeOrganizationId?: string | null; userId: string };
+  session: {
+    /** The row id, so a screen can tell which session is the one in front of you. */
+    id: string;
+    activeOrganizationId?: string | null;
+    userId: string;
+  };
   user: { id: string; email?: string | null; name?: string | null };
 }
 

@@ -12,8 +12,25 @@ export const border = { borderColor: "var(--border)" };
 export const muted = { color: "var(--text-muted)" };
 const raised = { background: "var(--surface-raised)", ...border };
 
+/**
+ * How this person wants dates and money written.
+ *
+ * A module-level value set once when the profile loads, rather than a context
+ * threaded through every screen: `formatMoney` and `formatDate` are called
+ * from dozens of places, most of them deep inside tables, and passing a
+ * preference to each one would touch every file to change a comma.
+ */
+let formats = { currency: "USD", dateFormat: "MDY", timezone: "" };
+
+export function setFormats(next: Partial<typeof formats>) {
+  formats = { ...formats, ...next };
+}
+
 /** Cents to "$1,234.56". Money never arrives as a float and never becomes one. */
-export function formatMoney(cents: number, currency = "USD"): string {
+export function formatMoney(
+  cents: number,
+  currency = formats.currency,
+): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
     cents / 100,
   );
@@ -27,9 +44,20 @@ export function formatRate(basisPoints: number): string {
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(d);
+  if (Number.isNaN(d.getTime())) return "—";
+  // The order somebody reads a date in is not a matter of taste — 03/04 is two
+  // different days depending on where you live, and an invoice date being
+  // misread by a month is a real argument with a customer.
+  const locale =
+    formats.dateFormat === "ISO"
+      ? "en-CA"
+      : formats.dateFormat === "DMY"
+        ? "en-GB"
+        : "en-US";
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    ...(formats.timezone ? { timeZone: formats.timezone } : {}),
+  }).format(d);
 }
 
 export function Button({

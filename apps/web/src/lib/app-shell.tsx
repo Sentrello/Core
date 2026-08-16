@@ -161,10 +161,12 @@ function ThemeChoice({
 function ProfileMenu({
   name,
   email,
+  onOpenProfile,
   onOpenSettings,
 }: {
   name: string | null | undefined;
   email: string;
+  onOpenProfile: () => void;
   onOpenSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -220,6 +222,18 @@ function ProfileMenu({
               </div>
             ) : null}
           </div>
+
+          <button
+            type="button"
+            role="menuitem"
+            className="menu-item"
+            onClick={() => {
+              setOpen(false);
+              onOpenProfile();
+            }}
+          >
+            Your profile
+          </button>
 
           <button
             type="button"
@@ -289,6 +303,9 @@ export function AppShell({
           <ProfileMenu
             name={user.name}
             email={user.email}
+            // No nav entry of its own: your account is not one of the
+            // business's modules, and it is reached from here or not at all.
+            onOpenProfile={() => go("profile", "Your profile")}
             onOpenSettings={() => settings && go(settings.id, settings.label)}
           />
         </div>
