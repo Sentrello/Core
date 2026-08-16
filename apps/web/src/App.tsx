@@ -9,6 +9,7 @@ import {
   useNavigation,
 } from "./lib/navigation";
 import { Bookkeeping } from "./routes/bookkeeping";
+import { ContactDetail } from "./routes/contact-detail";
 import { Contacts } from "./routes/contacts";
 import { ResetPassword } from "./routes/forgot-password";
 import { Forms } from "./routes/forms";
@@ -33,6 +34,11 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
   bookkeeping: Bookkeeping,
   forms: Forms,
   settings: Settings,
+};
+
+/** Screens that show a single record, chosen when navigation names one. */
+const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
+  crm: ContactDetail,
 };
 
 function useMeta() {
@@ -68,7 +74,13 @@ function useBootstrap() {
 /** The screen for wherever navigation currently points. */
 function CurrentScreen({ nav }: { nav: Meta["nav"] }) {
   const { current } = useNavigation();
-  const Screen = SCREENS[current.moduleId];
+
+  // A module can have a screen for one record as well as a list. Without this
+  // the record id is carried around and never used, which is how the previous
+  // navigation model quietly prevented anything linking to anything.
+  const Screen = current.recordId
+    ? (RECORD_SCREENS[current.moduleId] ?? SCREENS[current.moduleId])
+    : SCREENS[current.moduleId];
   const entry = nav.find((n) => n.id === current.moduleId);
 
   return (

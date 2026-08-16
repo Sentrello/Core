@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Contact, api } from "../lib/api";
+import { useNavigation } from "../lib/navigation";
 import {
   Button,
   Card,
@@ -17,6 +18,7 @@ import {
 
 export function Contacts() {
   const qc = useQueryClient();
+  const { open } = useNavigation();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -87,11 +89,16 @@ export function Contacts() {
             ) : (
               <Row key={c.id}>
                 <td className="py-2 font-medium">
+                  {/* Opens the contact rather than an edit form. Editing a row
+                      in place was fine when a contact was four fields; now
+                      there is a company, deals, notes and follow-ups to see,
+                      and the name is the way in to all of it. */}
                   <button
                     type="button"
                     className="underline-offset-2 hover:underline"
-                    onClick={() => setEditing(c.id)}
-                    title="Edit"
+                    onClick={() =>
+                      open({ moduleId: "crm", recordId: c.id, title: c.name })
+                    }
                   >
                     {c.name}
                   </button>
