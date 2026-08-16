@@ -14,6 +14,7 @@ import {
   Table,
   muted,
 } from "../lib/ui";
+import { FormBuilder } from "./form-builder";
 
 type FormRow = FormDefinition & { allowedOrigins: string[] };
 
@@ -22,6 +23,7 @@ export function Forms() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState("contact");
   const [showing, setShowing] = useState<FormRow | null>(null);
+  const [building, setBuilding] = useState<FormRow | null>(null);
 
   const forms = useQuery({
     queryKey: ["forms"],
@@ -76,25 +78,44 @@ export function Forms() {
           become contacts here.
         </Empty>
       ) : (
-        <Table headers={["Name", "Type", "Allowed sites", ""]}>
+        <Table headers={["Name", "Type", "Questions", "Allowed sites", ""]}>
           {rows.map((f) => (
             <Row key={f.id}>
               <td className="py-2 font-medium">{f.name}</td>
-              <td style={muted}>{f.kind}</td>
+              <td style={muted}>
+                {f.kind}
+                {f.tag ? <span className="ml-1 text-xs">· {f.tag}</span> : null}
+              </td>
+              <td style={muted}>{f.fields?.length ?? 0}</td>
               <td style={muted}>
                 {f.allowedOrigins?.length
                   ? f.allowedOrigins.join(", ")
                   : "this site only"}
               </td>
               <td className="text-right">
-                <Button variant="secondary" onClick={() => setShowing(f)}>
-                  Embed code
-                </Button>
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setBuilding(f)}>
+                    Edit questions
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowing(f)}>
+                    Embed code
+                  </Button>
+                </div>
               </td>
             </Row>
           ))}
         </Table>
       )}
+
+      {building ? (
+        <FormBuilder
+          formId={building.id}
+          fields={building.fields ?? []}
+          tag={building.tag ?? null}
+          style={building.style ?? null}
+          onDone={() => setBuilding(null)}
+        />
+      ) : null}
 
       {showing ? (
         <EmbedCode form={showing} onClose={() => setShowing(null)} />

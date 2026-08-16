@@ -92,5 +92,9 @@ export type FormDefinition = {
   key: string;
   name: string;
   kind: string;
+  /** Which form a submission came from; every form collects a name. */
+  tag?: string | null;
+  fields?: { name: string; label: string; type: string; required?: boolean }[];
+  style?: { accent?: string; radius?: string } | null;
   submissionCount?: number;
 };
