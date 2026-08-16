@@ -139,8 +139,18 @@ export default defineModule({
   id: "invoicing",
   tier: "free",
   register(ctx) {
-    ctx.registerNav({ id: "invoicing", label: "Invoices", order: 20 });
-    ctx.registerNav({ id: "quotes", label: "Quotes", order: 19 });
+    ctx.registerNav({
+      id: "invoicing",
+      label: "Invoices",
+      order: 20,
+      group: "Money",
+    });
+    ctx.registerNav({
+      id: "quotes",
+      label: "Quotes",
+      order: 19,
+      group: "Sales",
+    });
     for (const p of ["read", "create", "update", "delete", "send"]) {
       ctx.registerPermission(`invoicing:${p}`);
     }

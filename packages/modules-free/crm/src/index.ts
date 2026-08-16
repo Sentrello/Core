@@ -225,7 +225,12 @@ export default defineModule({
   id: "crm",
   tier: "free",
   register(ctx) {
-    ctx.registerNav({ id: "crm", label: "Contacts", order: 10 });
+    ctx.registerNav({
+      id: "crm",
+      label: "Contacts",
+      order: 10,
+      group: "Sales",
+    });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
     }

@@ -17,6 +17,99 @@ interface NavEntry {
   id: string;
   label: string;
   moduleId?: string;
+  group?: string;
+}
+
+/**
+ * Sections, in the order a business works through them rather than
+ * alphabetically: find the customer, agree the price, take the money, do the
+ * job. A section the host has never heard of sorts to the end rather than
+ * being dropped — a module may name its own.
+ */
+const GROUP_ORDER = ["Sales", "Money", "Work", "People", "Configure"];
+
+function sections(nav: NavEntry[]): { name: string; items: NavEntry[] }[] {
+  const byGroup = new Map<string, NavEntry[]>();
+  for (const item of nav) {
+    const key = item.group ?? "";
+    const list = byGroup.get(key);
+    if (list) list.push(item);
+    else byGroup.set(key, [item]);
+  }
+  return [...byGroup.entries()]
+    .map(([name, items]) => ({ name, items }))
+    .sort((a, b) => {
+      const ai = GROUP_ORDER.indexOf(a.name);
+      const bi = GROUP_ORDER.indexOf(b.name);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+}
+
+function Sidebar({ nav }: { nav: NavEntry[] }) {
+  const { current, go } = useNavigation();
+  const groups = sections(nav);
+
+  // Everything open to begin with. A collapsed sidebar hides the thing
+  // somebody is looking for, and the point of sections is to show how the work
+  // fits together — which cannot happen if it is folded away by default.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  return (
+    <aside className="app-sidebar p-2">
+      {groups.map((group) => {
+        const open = !collapsed[group.name];
+        // A section with no name is not a section: render its items plainly
+        // rather than inventing a heading for them.
+        if (!group.name) {
+          return group.items.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => go(n.id, n.label)}
+              aria-current={current.moduleId === n.id ? "page" : undefined}
+              className="nav-link"
+            >
+              {n.label}
+            </button>
+          ));
+        }
+        return (
+          <div key={group.name} className="mb-1">
+            <button
+              type="button"
+              className="nav-group-toggle"
+              aria-expanded={open}
+              onClick={() =>
+                setCollapsed((c) => ({ ...c, [group.name]: open }))
+              }
+            >
+              <span className="nav-caret" data-open={open}>
+                ▶
+              </span>
+              <span className="nav-group-label">{group.name}</span>
+            </button>
+            {open ? (
+              <div className="mt-0.5 space-y-0.5">
+                {group.items.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => go(n.id, n.label)}
+                    aria-current={
+                      current.moduleId === n.id ? "page" : undefined
+                    }
+                    className="nav-link"
+                  >
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </aside>
+  );
 }
 
 /** Initials, for when there is no avatar — which is the normal case. */
@@ -169,46 +262,30 @@ export function AppShell({
   user: { name?: string | null; email: string };
   children: React.ReactNode;
 }) {
-  const { current, go } = useNavigation();
+  const { go } = useNavigation();
 
-  // Settings lives in the profile menu rather than the nav: it is where you go
-  // occasionally, and giving it equal billing with the work crowds the things
-  // people use every day.
-  const visible = nav.filter((n) => n.id !== "settings");
+  // Settings reaches the sidebar under Configure and the profile menu both.
+  // Two ways to the same screen is not duplication here: one is where you look
+  // when configuring the platform, the other where you look when it is your
+  // own account you are thinking about.
   const settings = nav.find((n) => n.id === "settings");
+  const first = nav.find((n) => n.id !== "settings") ?? nav[0];
 
   return (
     <div className="min-h-screen">
+      {/* Global: who you are, and the way home. The modules are not up here —
+          fifteen of them scrolling sideways told you nothing about how they
+          relate, which was the whole complaint. */}
       <header className="app-header">
-        <div className="flex items-center gap-3 px-4 py-2">
+        <div className="flex h-13 items-center gap-3 px-4 py-2">
           <button
             type="button"
-            onClick={() => {
-              const first = visible[0];
-              if (first) go(first.id, first.label);
-            }}
+            onClick={() => first && go(first.id, first.label)}
             className="shrink-0 font-semibold"
           >
             Sentrello
           </button>
-
-          {/* Scrolls rather than wraps: a business with every module bought has
-              a lot of these, and a header that grows to two rows pushes the
-              work down the page on every screen. */}
-          <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-            {visible.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => go(n.id, n.label)}
-                aria-current={current.moduleId === n.id ? "page" : undefined}
-                className="nav-link"
-              >
-                {n.label}
-              </button>
-            ))}
-          </nav>
-
+          <div className="flex-1" />
           <ProfileMenu
             name={user.name}
             email={user.email}
@@ -217,7 +294,10 @@ export function AppShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl p-6">{children}</main>
+      <div className="flex items-start">
+        <Sidebar nav={nav} />
+        <main className="min-w-0 flex-1 p-6">{children}</main>
+      </div>
     </div>
   );
 }

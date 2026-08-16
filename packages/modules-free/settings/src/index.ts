@@ -45,7 +45,12 @@ export default defineModule({
   id: "settings",
   tier: "free",
   register(ctx) {
-    ctx.registerNav({ id: "settings", label: "Settings", order: 90 });
+    ctx.registerNav({
+      id: "settings",
+      label: "Settings",
+      order: 90,
+      group: "Configure",
+    });
     for (const p of ["read", "update"]) {
       ctx.registerPermission(`settings:${p}`);
     }

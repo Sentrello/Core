@@ -32,7 +32,12 @@ export default defineModule({
   tier: "free",
   requires: ["crm"],
   register(ctx) {
-    ctx.registerNav({ id: "forms", label: "Forms", order: 25 });
+    ctx.registerNav({
+      id: "forms",
+      label: "Forms",
+      order: 25,
+      group: "Configure",
+    });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
     }

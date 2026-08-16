@@ -82,6 +82,47 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Sidebar. Fixed width, its own scroll, so a long module list never pushes the
+   work off screen. */
+.app-sidebar {
+  width: 15rem;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface-raised);
+  position: sticky;
+  top: 3.25rem;
+  height: calc(100vh - 3.25rem);
+  overflow-y: auto;
+}
+
+.nav-group-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.4rem;
+}
+.nav-group-toggle:hover {
+  background: var(--surface);
+}
+.nav-caret {
+  transition: transform 120ms ease;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+.nav-caret[data-open="true"] {
+  transform: rotate(90deg);
+}
+
 .nav-link {
   border-radius: 0.5rem;
   padding: 0.4rem 0.7rem;
@@ -96,6 +137,13 @@
 .nav-link[aria-current="page"] {
   background: var(--color-brand-500);
   color: var(--color-neutral-50);
+}
+
+.app-sidebar .nav-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding-left: 1.5rem;
 }
 
 .menu-panel {

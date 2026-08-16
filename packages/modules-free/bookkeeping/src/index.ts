@@ -16,7 +16,12 @@ export default defineModule({
   id: "bookkeeping",
   tier: "free",
   register(ctx) {
-    ctx.registerNav({ id: "bookkeeping", label: "Bookkeeping", order: 30 });
+    ctx.registerNav({
+      id: "bookkeeping",
+      label: "Bookkeeping",
+      order: 30,
+      group: "Money",
+    });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`bookkeeping:${p}`);
     }

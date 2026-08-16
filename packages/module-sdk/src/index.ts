@@ -37,7 +37,23 @@ export interface ModuleContext {
   app: Hono<SentrelloEnv>;
   /** True if the instance's license satisfies `need`. */
   entitled: (need: EntitlementNeed) => boolean;
-  registerNav: (item: { id: string; label: string; order?: number }) => void;
+  registerNav: (item: {
+    id: string;
+    label: string;
+    order?: number;
+    /**
+     * Which section of the sidebar this belongs under.
+     *
+     * The nav was a flat list, which is a large part of why the application
+     * reads as unrelated parts: fifteen equal items say nothing about a
+     * contact leading to a quote leading to an invoice. A section says at
+     * least that they belong to the same piece of work.
+     *
+     * Free text rather than a fixed set, so a module can name a section the
+     * host has never heard of. Anything without one sits at the top level.
+     */
+    group?: string;
+  }) => void;
   registerPermission: (permission: string) => void;
   /**
    * Background work. The name is namespaced with the module id by the host, so
