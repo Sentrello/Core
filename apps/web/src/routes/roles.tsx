@@ -1,7 +1,7 @@
 import { statement } from "@sentrello/auth/permissions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { type OrgRole, roleApi } from "../lib/auth";
+import { type Member, type OrgRole, memberApi, roleApi } from "../lib/auth";
 import {
   Button,
   Card,
@@ -10,6 +10,7 @@ import {
   Input,
   Loading,
   Row,
+  Select,
   Table,
   muted,
 } from "../lib/ui";
@@ -77,6 +78,86 @@ function Matrix({
   );
 }
 
+/**
+ * Giving a role to somebody.
+ *
+ * Without this the whole feature is decorative: a business can define a
+ * workshop manager and has no way to make anyone one. The built-in roles are
+ * offered alongside the custom ones, because moving somebody from Staff to
+ * Accounting is the same act as moving them to a role you invented.
+ */
+function People({ custom }: { custom: OrgRole[] }) {
+  const qc = useQueryClient();
+  const members = useQuery({
+    queryKey: ["org-members"],
+    queryFn: async () => (await memberApi.listMembers()).data?.members ?? [],
+  });
+
+  const assign = useMutation({
+    mutationFn: async ({
+      memberId,
+      role,
+    }: { memberId: string; role: string }) => {
+      const res = await memberApi.updateMemberRole({ memberId, role });
+      if (res.error) throw new Error(res.error.message ?? "Could not change");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["org-members"] }),
+  });
+
+  const choices = [
+    "owner",
+    "admin",
+    "staff",
+    "accounting",
+    "customer",
+    ...custom.map((r) => r.role),
+  ];
+
+  if (members.isLoading) return <Loading />;
+
+  return (
+    <Card>
+      <p className="mb-2 font-medium">People</p>
+      {members.data?.length ? (
+        <Table headers={["Name", "Email", "Role"]}>
+          {members.data.map((m: Member) => (
+            <Row key={m.id}>
+              <td className="py-2">{m.user.name || "—"}</td>
+              <td style={muted}>{m.user.email}</td>
+              <td>
+                <Select
+                  value={m.role}
+                  aria-label={`Role for ${m.user.email}`}
+                  onChange={(e) =>
+                    assign.mutate({ memberId: m.id, role: e.target.value })
+                  }
+                >
+                  {/* A role the member already holds but which no longer
+                      exists still shows, or the dropdown would silently
+                      reassign them on the next change. */}
+                  {(choices.includes(m.role)
+                    ? choices
+                    : [m.role, ...choices]
+                  ).map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </Select>
+              </td>
+            </Row>
+          ))}
+        </Table>
+      ) : (
+        <p className="text-sm" style={muted}>
+          Nobody else has been invited yet.
+        </p>
+      )}
+      {assign.error ? <ErrorNote error={assign.error} /> : null}
+    </Card>
+  );
+}
+
 export function Roles() {
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -122,6 +203,8 @@ export function Roles() {
 
   return (
     <div className="space-y-4">
+      <People custom={custom.data ?? []} />
+
       <Card>
         <p className="font-medium">Roles that come with Sentrello</p>
         <p className="mt-1 text-sm" style={muted}>

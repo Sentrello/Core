@@ -99,3 +99,48 @@ test("the custom role is stored where permission checks will find it", async () 
   // superset of somebody else's.
   expect(permission.bookkeeping).toBeUndefined();
 });
+
+/**
+ * A role nobody can be given is decorative. This is the half that makes the
+ * feature real.
+ */
+test("a custom role can actually be given to somebody", async () => {
+  const second = `member-${suffix}@x.test`;
+  // The instance refuses new accounts by design, so this takes the same
+  // sanctioned path the owner helper does rather than flipping the guard —
+  // test files run concurrently and the flag is process-wide.
+  const signUp = await signUpAsOwner({
+    email: second,
+    password: "correct-horse-battery-staple",
+    name: "Staffer",
+  });
+  expect(signUp).toBeTruthy();
+
+  const [user] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, second));
+  if (!user) throw new Error("no second user");
+
+  const added = await auth.api.addMember({
+    body: { userId: user.id, role: "staff", organizationId: orgId },
+    headers,
+  });
+  expect(added).toBeTruthy();
+
+  const updated = await auth.api.updateMemberRole({
+    body: {
+      memberId: (added as { id: string }).id,
+      role: "workshop-manager",
+      organizationId: orgId,
+    },
+    headers,
+  });
+  expect((updated as { role: string }).role).toBe("workshop-manager");
+
+  // Cleanup: this user is outside the org teardown above.
+  await db.delete(schema.member).where(eq(schema.member.userId, user.id));
+  await db.delete(schema.session).where(eq(schema.session.userId, user.id));
+  await db.delete(schema.account).where(eq(schema.account.userId, user.id));
+  await db.delete(schema.user).where(eq(schema.user.id, user.id));
+});

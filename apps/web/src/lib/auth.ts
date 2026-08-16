@@ -12,6 +12,11 @@ export const authClient = createAuthClient({
     // dynamicAccessControl here as well as on the server: without it the
     // client has no createRole/listRoles at all, and the roles screen has
     // nothing to call.
+    //
+    // The cast is not laziness — removing it fails, because our concrete
+    // AccessControl is not assignable to the plugin's open `Statements` shape.
+    // It is also what erases the dynamic methods from the client's type, which
+    // is why they are named explicitly below.
     organizationClient({
       ac,
       roles,
@@ -48,3 +53,23 @@ interface RoleApi {
 }
 
 export const roleApi = authClient.organization as unknown as RoleApi;
+
+export interface Member {
+  id: string;
+  role: string;
+  userId: string;
+  user: { id: string; name?: string | null; email: string };
+}
+
+interface MemberApi {
+  listMembers: () => Promise<{
+    data?: { members: Member[] };
+    error?: { message?: string };
+  }>;
+  updateMemberRole: (input: {
+    memberId: string;
+    role: string;
+  }) => Promise<{ error?: { message?: string } }>;
+}
+
+export const memberApi = authClient.organization as unknown as MemberApi;
