@@ -10,12 +10,14 @@ secrets/
 !scripts/*.example
 .DS_Store
 
-# Local-only build plans (contain commercial/control-plane strategy — keep out of the public repo)
+# Local-only working notes and build plans. They carry commercial and
+# control-plane strategy, and this repository is public.
 docs/plan/
 00-START-HERE.md
 MANIFEST.txt
+CLAUDE.md
+.claude/
 
-# local Claude Code settings
 dist-types/
 
 # a checkout's own data directory (see SENTRELLO_DATA_DIR). Both spellings:
