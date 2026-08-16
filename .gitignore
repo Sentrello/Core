@@ -15,8 +15,6 @@ secrets/
 docs/plan/
 00-START-HERE.md
 MANIFEST.txt
-CLAUDE.md
-.claude/
 
 dist-types/
 
