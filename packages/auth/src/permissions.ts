@@ -7,6 +7,10 @@ import {
 // Resources Sentrello guards, on top of Better Auth's org/member/invitation defaults.
 export const statement = {
   ...defaultStatements,
+  // The first screen after signing in. Read-only and held by every role,
+  // including the ones that can do almost nothing else — a person who cannot
+  // see the landing page has nowhere to land.
+  dashboard: ["read"],
   crm: ["read", "create", "update", "delete"],
   invoicing: ["read", "create", "update", "delete", "send"],
   bookkeeping: ["read", "create", "update", "delete"],
@@ -30,6 +34,7 @@ export const ac = createAccessControl(statement);
 // that's Packet 03).
 export const admin = ac.newRole({
   ...adminAc.statements,
+  dashboard: ["read"],
   crm: ["read", "create", "update", "delete"],
   invoicing: ["read", "create", "update", "delete", "send"],
   bookkeeping: ["read", "create", "update", "delete"],
@@ -45,6 +50,7 @@ export const admin = ac.newRole({
 });
 
 export const accounting = ac.newRole({
+  dashboard: ["read"],
   crm: ["read"],
   invoicing: ["read", "create", "update", "delete", "send"],
   bookkeeping: ["read", "create", "update", "delete"],
@@ -67,6 +73,7 @@ export const accounting = ac.newRole({
 });
 
 export const staff = ac.newRole({
+  dashboard: ["read"],
   crm: ["read", "create", "update"],
   invoicing: ["read"],
   reports: [],
@@ -91,6 +98,7 @@ export const staff = ac.newRole({
 // External portal users — RBAC is intentionally tiny; row-level scoping to their
 // OWN records is enforced in the module routes, not by RBAC alone.
 export const customer = ac.newRole({
+  dashboard: ["read"],
   invoicing: ["read"],
 });
 

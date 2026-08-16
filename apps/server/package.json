@@ -18,7 +18,8 @@
     "@sentrello/module-bookkeeping": "*",
     "@sentrello/module-forms": "*",
     "@sentrello/module-settings": "*",
-    "@sentrello/email": "*"
+    "@sentrello/email": "*",
+    "@sentrello/module-dashboard": "*"
   },
   "devDependencies": {
     "jose": "^6.0.0"

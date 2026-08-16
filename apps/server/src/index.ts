@@ -9,6 +9,7 @@ import { mailConfigured } from "@sentrello/email";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
 import crm from "@sentrello/module-crm";
+import dashboard from "@sentrello/module-dashboard";
 import forms from "@sentrello/module-forms";
 import invoicing from "@sentrello/module-invoicing";
 import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
@@ -29,6 +30,7 @@ const { state, gate } = await resolveLicense();
 // Free modules ship in this repo; commercial bundles are discovered at runtime
 // only if installed. The loader then drops any this instance is not entitled to.
 const modules: SentrelloModule[] = [
+  dashboard,
   crm,
   forms,
   invoicing,

@@ -12,6 +12,7 @@ import { Bookkeeping } from "./routes/bookkeeping";
 import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
 import { Contacts } from "./routes/contacts";
+import { Dashboard } from "./routes/dashboard";
 import { DealDetail } from "./routes/deal-detail";
 import { Deals } from "./routes/deals";
 import { ResetPassword } from "./routes/forgot-password";
@@ -31,6 +32,7 @@ import { SignIn } from "./routes/sign-in";
  * elsewhere simply has no entry here yet.
  */
 const SCREENS: Record<string, () => React.ReactElement | null> = {
+  dashboard: Dashboard,
   crm: Contacts,
   companies: Companies,
   deals: Deals,
