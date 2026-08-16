@@ -101,12 +101,14 @@ export default defineModule({
       label: "Invoices",
       order: 20,
       group: "Money",
+      requires: { invoicing: ["read"] },
     });
     ctx.registerNav({
       id: "quotes",
       label: "Quotes",
       order: 19,
       group: "Sales",
+      requires: { invoicing: ["read"] },
     });
     for (const p of ["read", "create", "update", "delete", "send"]) {
       ctx.registerPermission(`invoicing:${p}`);

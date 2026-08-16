@@ -38,6 +38,9 @@ export default defineModule({
       label: "Forms",
       order: 25,
       group: "Configure",
+      // Forms feed the CRM, and its routes are guarded by the CRM's own
+      // permissions — so the menu follows the same rule.
+      requires: { crm: ["update"] },
     });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);

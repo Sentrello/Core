@@ -125,12 +125,8 @@ app.get("/api/_meta", requireSession(), async (c) => {
 
   /**
    * The role this person holds here, for filtering the nav by what they may
-   * actually open.
-   *
-   * A role defined by the business itself is not in the compiled set, and a
-   * permission this cannot evaluate is left visible rather than hidden — the
-   * routes are guarded either way, and hiding a screen somebody is entitled to
-   * is the worse mistake of the two.
+   * actually open. The routes are guarded either way; this only decides what
+   * somebody is offered.
    */
   const [membership] = orgId
     ? await db
@@ -144,9 +140,45 @@ app.get("/api/_meta", requireSession(), async (c) => {
         )
         .limit(1)
     : [];
-  const role = (
-    roles as Record<string, { authorize: (r: unknown) => { success: boolean } }>
+  const compiled = (
+    roles as Record<
+      string,
+      { authorize: (r: unknown) => { success: boolean } } | undefined
+    >
   )[membership?.role ?? ""];
+
+  /**
+   * A role the business wrote for itself.
+   *
+   * Better Auth keeps these as JSON in a column rather than compiling them, so
+   * they are read and checked here. Without this, the people most likely to
+   * have a tailored role — the whole reason custom roles exist — were the ones
+   * offered every screen in the product, including the ones their role was
+   * written specifically to keep them out of.
+   */
+  let custom: Record<string, string[]> | null = null;
+  if (!compiled && membership?.role && orgId) {
+    const [row] = await db
+      .select({ permission: schema.organizationRole.permission })
+      .from(schema.organizationRole)
+      .where(
+        and(
+          eq(schema.organizationRole.organizationId, orgId),
+          eq(schema.organizationRole.role, membership.role),
+        ),
+      )
+      .limit(1);
+    if (row) {
+      try {
+        custom = JSON.parse(row.permission) as Record<string, string[]>;
+      } catch {
+        // Unreadable permissions are treated as unknown rather than as none:
+        // the routes still decide, and blanking somebody's menu on a parse
+        // error would look exactly like their access had been revoked.
+        custom = null;
+      }
+    }
+  }
 
   const visible = nav.filter((item) => {
     const allowed = navVisibility.get(item.id);
@@ -165,8 +197,17 @@ app.get("/api/_meta", requireSession(), async (c) => {
     // refused after clicking tells somebody twice that they cannot do their
     // job: once by the error, and once by the menu that suggested otherwise.
     const needs = navPermissions.get(item.id);
-    if (!needs || !role) return true;
-    return role.authorize(needs).success;
+    if (!needs) return true;
+    if (compiled) return compiled.authorize(needs).success;
+    if (custom) {
+      return Object.entries(needs).every(([resource, actions]) =>
+        actions.every((action) => custom?.[resource]?.includes(action)),
+      );
+    }
+    // Neither: nothing to check it against, so the entry stays and the route
+    // decides. Hiding a screen from somebody entitled to it is the worse
+    // mistake of the two.
+    return true;
   });
 
   return c.json({

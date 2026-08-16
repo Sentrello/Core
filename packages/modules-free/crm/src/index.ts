@@ -863,12 +863,15 @@ export default defineModule({
       label: "Contacts",
       order: 10,
       group: "Sales",
+      // The book of customers is not everybody's to open.
+      requires: { crm: ["read"] },
     });
     ctx.registerNav({
       id: "companies",
       label: "Companies",
       order: 11,
       group: "Sales",
+      requires: { crm: ["read"] },
     });
     // The pipeline. Named Deals as Atomic CRM has it; the quote-to-payment
     // flow is Make Deal, which is a different thing that used to share a name.
@@ -877,6 +880,7 @@ export default defineModule({
       label: "Deals",
       order: 12,
       group: "Sales",
+      requires: { crm: ["read"] },
     });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
