@@ -34,6 +34,14 @@
   --text-muted: var(--color-neutral-500);
 }
 
+/*
+ * Dark comes from three places, in this order: the system, then an explicit
+ * choice, then the account's saved preference once it loads.
+ *
+ * The attribute selectors have to beat the media query in both directions —
+ * somebody on a dark system who picks light must actually get light — so both
+ * are spelled out rather than relying on the media query alone.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
     --surface: oklch(0.19 0.008 80);
@@ -42,6 +50,84 @@
     --text: var(--color-neutral-100);
     --text-muted: oklch(0.68 0.008 80);
   }
+}
+
+:root[data-theme="dark"] {
+  --surface: oklch(0.19 0.008 80);
+  --surface-raised: oklch(0.24 0.008 80);
+  --border: oklch(0.32 0.008 80);
+  --text: var(--color-neutral-100);
+  --text-muted: oklch(0.68 0.008 80);
+}
+
+:root[data-theme="light"] {
+  --surface: var(--color-neutral-50);
+  --surface-raised: white;
+  --border: var(--color-neutral-200);
+  --text: var(--color-neutral-900);
+  --text-muted: var(--color-neutral-500);
+}
+
+/*
+ * The shell. A header that stays put, and everything else scrolling under it —
+ * so the way back is always on screen. In a system where a contact leads to a
+ * deal leads to an invoice, being three records deep with no visible way out is
+ * how people end up lost.
+ */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-link {
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.nav-link:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.nav-link[aria-current="page"] {
+  background: var(--color-brand-500);
+  color: var(--color-neutral-50);
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  min-width: 13rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  overflow: hidden;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.menu-item:hover {
+  background: var(--surface);
+}
+
+/* Where a record came from, shown above it. */
+.breadcrumb {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.breadcrumb button:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 
 body {

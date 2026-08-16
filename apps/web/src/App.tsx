@@ -1,8 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { type Meta, api } from "./lib/api";
-import { authClient, useSession } from "./lib/auth";
+import { AppShell } from "./lib/app-shell";
+import { useSession } from "./lib/auth";
 import { setModuleRelease } from "./lib/module-ui";
+import {
+  Breadcrumb,
+  NavigationProvider,
+  useNavigation,
+} from "./lib/navigation";
 import { Bookkeeping } from "./routes/bookkeeping";
 import { Contacts } from "./routes/contacts";
 import { ResetPassword } from "./routes/forgot-password";
@@ -60,12 +65,38 @@ function useBootstrap() {
   });
 }
 
+/** The screen for wherever navigation currently points. */
+function CurrentScreen({ nav }: { nav: Meta["nav"] }) {
+  const { current } = useNavigation();
+  const Screen = SCREENS[current.moduleId];
+  const entry = nav.find((n) => n.id === current.moduleId);
+
+  return (
+    <>
+      <Breadcrumb />
+      <h1 className="mb-4 text-lg font-semibold">
+        {entry?.label ?? current.title}
+      </h1>
+      {Screen ? (
+        <Screen />
+      ) : (
+        // Not a Core screen: the module may have shipped its own. The script is
+        // fetched by module id, which is not always the nav id.
+        <ModuleScreen
+          moduleId={entry?.moduleId ?? current.moduleId}
+          screenId={current.moduleId}
+          label={entry?.label ?? current.moduleId}
+        />
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const { data } = useMeta();
   const session = useSession();
   const bootstrap = useBootstrap();
   const nav = data?.nav ?? [];
-  const [active, setActive] = useState("crm");
 
   // The emailed reset link lands here with no session, and must be reachable
   // before the sign-in form or the bootstrap screen takes the page.
@@ -83,61 +114,19 @@ export default function App() {
   }
   if (!session.data) return <SignIn />;
 
+  // Whatever the server put first, rather than a hard-coded module: a Core
+  // instance and a Pro one with a dashboard should each land somewhere that
+  // exists, and neither should land on a module the licence did not load.
+  const landing = nav.find((n) => n.id !== "settings") ?? nav[0];
+  if (!landing) return null;
+
   return (
-    <div className="flex min-h-screen">
-      <aside
-        className="w-56 border-r p-4"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div className="mb-4 font-semibold">Sentrello</div>
-        <button
-          type="button"
-          onClick={() => authClient.signOut()}
-          className="mb-4 text-xs"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Sign out
-        </button>
-        <nav className="space-y-1">
-          {nav.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => setActive(n.id)}
-              className="block w-full rounded px-2 py-1 text-left text-sm"
-              style={
-                active === n.id
-                  ? {
-                      background: "var(--color-brand-500)",
-                      color: "var(--color-neutral-50)",
-                    }
-                  : undefined
-              }
-            >
-              {n.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <main className="flex-1 p-6">
-        <h1 className="mb-4 text-lg font-semibold">
-          {nav.find((n) => n.id === active)?.label ?? "Dashboard"}
-        </h1>
-        {(() => {
-          const Screen = SCREENS[active];
-          if (Screen) return <Screen />;
-          // Not a Core screen: the module may have shipped its own. The
-          // script is fetched by module id, which is not always the nav id.
-          const entry = nav.find((n) => n.id === active);
-          return (
-            <ModuleScreen
-              moduleId={entry?.moduleId ?? active}
-              screenId={active}
-              label={entry?.label ?? active}
-            />
-          );
-        })()}
-      </main>
-    </div>
+    <NavigationProvider
+      initial={{ moduleId: landing.id, title: landing.label }}
+    >
+      <AppShell nav={nav} user={session.data.user}>
+        <CurrentScreen nav={nav} />
+      </AppShell>
+    </NavigationProvider>
   );
 }
