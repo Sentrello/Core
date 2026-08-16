@@ -695,3 +695,95 @@ test("a company can be corrected after it is created", async () => {
   expect(body.company.size).toBe(12);
   expect(body.company.sector).toBeNull();
 });
+
+test("a deal's company and people can be changed after it exists", async () => {
+  // They could only be set at creation, so a deal recorded against the wrong
+  // customer could not be fixed — only deleted, taking its notes with it.
+  const co = (await (
+    await app.request("http://localhost/api/companies", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Right Company" }),
+    })
+  ).json()) as { company: { id: string } };
+
+  const person = (await (
+    await app.request("http://localhost/api/contacts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ firstName: "Late", lastName: "Addition" }),
+    })
+  ).json()) as { contact: { id: string } };
+
+  const made = (await (
+    await app.request("http://localhost/api/deals", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Misfiled job", contactIds: [] }),
+    })
+  ).json()) as { deal: { id: string } };
+
+  const res = await app.request(`http://localhost/api/deals/${made.deal.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      companyId: co.company.id,
+      contactIds: [person.contact.id],
+    }),
+  });
+  expect(res.status).toBe(200);
+
+  const related = (await (
+    await app.request(`http://localhost/api/deals/${made.deal.id}/related`, {
+      headers,
+    })
+  ).json()) as {
+    company: { name: string } | null;
+    contacts: { name: string }[];
+  };
+  expect(related.company?.name).toBe("Right Company");
+  expect(related.contacts.map((p) => p.name)).toEqual(["Late Addition"]);
+});
+
+test("a contact can be moved to a different company", async () => {
+  const first = (await (
+    await app.request("http://localhost/api/companies", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Old Employer" }),
+    })
+  ).json()) as { company: { id: string } };
+  const second = (await (
+    await app.request("http://localhost/api/companies", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "New Employer" }),
+    })
+  ).json()) as { company: { id: string } };
+
+  const made = (await (
+    await app.request("http://localhost/api/contacts", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        firstName: "Moved",
+        lastName: "Jobs",
+        companyId: first.company.id,
+      }),
+    })
+  ).json()) as { contact: { id: string } };
+
+  await app.request(`http://localhost/api/contacts/${made.contact.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ companyId: second.company.id }),
+  });
+
+  const related = (await (
+    await app.request(
+      `http://localhost/api/contacts/${made.contact.id}/related`,
+      { headers },
+    )
+  ).json()) as { company: { name: string } | null };
+  expect(related.company?.name).toBe("New Employer");
+});

@@ -16,6 +16,7 @@ import {
   Field,
   Input,
   Loading,
+  Select,
   formatDate,
   formatMoney,
   muted,
@@ -96,9 +97,16 @@ function EditContact({
     email: contact.email ?? "",
     phone: contact.phone ?? "",
     linkedinUrl: contact.linkedinUrl ?? "",
+    companyId: contact.companyId ?? "",
   });
   const [emails, setEmails] = useState<ListRow[]>(withBlank(contact.emails));
   const [phones, setPhones] = useState<ListRow[]>(withBlank(contact.phones));
+
+  const companies = useQuery({
+    queryKey: ["companies"],
+    queryFn: () =>
+      api<{ companies: { id: string; name: string }[] }>("/api/companies"),
+  });
 
   const save = useMutation({
     mutationFn: () =>
@@ -112,6 +120,7 @@ function EditContact({
           email: form.email || null,
           phone: form.phone || null,
           linkedinUrl: form.linkedinUrl || null,
+          companyId: form.companyId || null,
           emails: tidy(emails),
           phones: tidy(phones),
         }),
@@ -120,6 +129,9 @@ function EditContact({
       qc.invalidateQueries({ queryKey: ["contact-related", contact.id] });
       // The list shows the display name, which first and last just changed.
       qc.invalidateQueries({ queryKey: ["contacts"] });
+      // The company screen lists who works there, and this may have just
+      // moved somebody in or out.
+      qc.invalidateQueries({ queryKey: ["company-related"] });
       onDone();
     },
   });
@@ -166,6 +178,19 @@ function EditContact({
             onChange={(e) => set({ phone: e.target.value })}
           />
         </Field>
+        <Field label="Company" hint="Who they work for, if anyone.">
+          <Select
+            value={form.companyId}
+            onChange={(e) => set({ companyId: e.target.value })}
+          >
+            <option value="">No company</option>
+            {(companies.data?.companies ?? []).map((co) => (
+              <option key={co.id} value={co.id}>
+                {co.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -203,6 +228,25 @@ function EditContact({
   );
 }
 
+/**
+ * A colour for a new tag, from a small readable set.
+ *
+ * Tags are scanned rather than read, so they need to differ at a glance —
+ * and asking somebody to pick a hex code before they can label a contact is
+ * a worse first experience than choosing for them.
+ */
+const TAG_COLOURS = [
+  "#22c55e",
+  "#3b82f6",
+  "#f59e0b",
+  "#ef4444",
+  "#a855f7",
+  "#14b8a6",
+];
+function randomTagColour(): string {
+  return TAG_COLOURS[Math.floor(Math.random() * TAG_COLOURS.length)] as string;
+}
+
 function Tags({
   contactId,
   attached,
@@ -219,6 +263,29 @@ function Tags({
     queryKey: ["tags"],
     queryFn: () => api<{ tags: Related["tags"] }>("/api/tags"),
     enabled: picking,
+  });
+
+  // Creating a tag where it is needed. The picker used to say "create them
+  // under Tags", which is a screen that does not exist — so the only way to
+  // make one was the API.
+  const [newName, setNewName] = useState("");
+  const create = useMutation({
+    mutationFn: async () => {
+      const made = await api<{ tag: { id: string } }>("/api/tags", {
+        method: "POST",
+        body: JSON.stringify({ name: newName, color: randomTagColour() }),
+      });
+      await api(`/api/contacts/${contactId}/tags`, {
+        method: "POST",
+        body: JSON.stringify({ tagId: made.tag.id }),
+      });
+    },
+    onSuccess: () => {
+      setNewName("");
+      setPicking(false);
+      qc.invalidateQueries({ queryKey: ["tags"] });
+      refresh();
+    },
   });
 
   const attach = useMutation({
@@ -281,12 +348,27 @@ function Tags({
               </button>
             ))}
           </div>
-        ) : (
-          <span className="text-xs" style={muted}>
-            {all.isLoading ? "…" : "No other tags. Create them under Tags."}
-          </span>
-        )
+        ) : null
       ) : null}
+
+      {picking ? (
+        <div className="flex items-center gap-1">
+          <Input
+            value={newName}
+            placeholder="New tag"
+            aria-label="New tag name"
+            className="w-32"
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <Button
+            onClick={() => create.mutate()}
+            disabled={!newName.trim() || create.isPending}
+          >
+            {create.isPending ? "…" : "Create"}
+          </Button>
+        </div>
+      ) : null}
+      {create.error ? <ErrorNote error={create.error} /> : null}
     </div>
   );
 }

@@ -7,6 +7,8 @@ import {
   Card,
   Empty,
   ErrorNote,
+  Field,
+  Input,
   Loading,
   Select,
   formatDate,
@@ -45,11 +47,183 @@ interface Related {
   notes: { id: string; text: string; createdAt: string }[];
 }
 
+/**
+ * Correcting a deal, and saying who it is with.
+ *
+ * The company and the people on a deal could only be set when it was created,
+ * through the API — so a deal that turned out to be with somebody else could
+ * not be fixed, only deleted. Which is the same gap the contact screen had.
+ */
+function EditDeal({
+  deal,
+  companyId,
+  contactIds,
+  onDone,
+}: {
+  deal: Related["deal"];
+  companyId: string | null;
+  contactIds: string[];
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: deal.name,
+    amount: (deal.amountCents / 100).toString(),
+    category: deal.category ?? "",
+    description: deal.description ?? "",
+    expectedCloseOn: deal.expectedCloseOn ?? "",
+    companyId: companyId ?? "",
+  });
+  const [on, setOn] = useState<Set<string>>(new Set(contactIds));
+  const set = (patch: Partial<typeof form>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  const people = useQuery({
+    queryKey: ["contacts"],
+    queryFn: () =>
+      api<{ contacts: { id: string; name: string }[] }>("/api/contacts"),
+  });
+  const companies = useQuery({
+    queryKey: ["companies"],
+    queryFn: () =>
+      api<{ companies: { id: string; name: string }[] }>("/api/companies"),
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/api/deals/${deal.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: form.name,
+          amountCents: Math.round(Number(form.amount || 0) * 100),
+          category: form.category || null,
+          description: form.description || null,
+          expectedCloseOn: form.expectedCloseOn || null,
+          companyId: form.companyId || null,
+          contactIds: [...on],
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-related", deal.id] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
+      // A contact's screen lists the deals it is on, and this may have just
+      // added or removed one.
+      qc.invalidateQueries({ queryKey: ["contact-related"] });
+      qc.invalidateQueries({ queryKey: ["company-related"] });
+      onDone();
+    },
+  });
+
+  return (
+    <Card>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Name">
+          <Input
+            value={form.name}
+            onChange={(e) => set({ name: e.target.value })}
+          />
+        </Field>
+        <Field label="Amount" hint="What the job is worth.">
+          <Input
+            value={form.amount}
+            inputMode="decimal"
+            onChange={(e) => set({ amount: e.target.value })}
+          />
+        </Field>
+        <Field label="Category">
+          <Input
+            value={form.category}
+            onChange={(e) => set({ category: e.target.value })}
+          />
+        </Field>
+        <Field label="Expected close">
+          <Input
+            type="date"
+            value={form.expectedCloseOn}
+            onChange={(e) => set({ expectedCloseOn: e.target.value })}
+          />
+        </Field>
+        <Field label="Company">
+          <Select
+            value={form.companyId}
+            onChange={(e) => set({ companyId: e.target.value })}
+          >
+            <option value="">No company</option>
+            {(companies.data?.companies ?? []).map((co) => (
+              <option key={co.id} value={co.id}>
+                {co.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <Field label="Description">
+        <textarea
+          rows={2}
+          value={form.description}
+          onChange={(e) => set({ description: e.target.value })}
+          className="w-full rounded border px-2 py-1.5 text-sm"
+          style={{
+            background: "var(--surface-raised)",
+            borderColor: "var(--border)",
+            color: "var(--text)",
+          }}
+        />
+      </Field>
+
+      <Field
+        label="People on this deal"
+        hint="A deal usually involves several."
+      >
+        <div className="max-h-48 space-y-1 overflow-y-auto">
+          {(people.data?.contacts ?? []).map((p) => (
+            <label key={p.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={on.has(p.id)}
+                onChange={(e) =>
+                  setOn((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.add(p.id);
+                    else next.delete(p.id);
+                    return next;
+                  })
+                }
+              />
+              {p.name}
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      <div className="mt-3 flex gap-2">
+        <Button
+          onClick={() => save.mutate()}
+          disabled={!form.name.trim() || save.isPending}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+        <button
+          type="button"
+          className="text-sm underline"
+          style={muted}
+          onClick={onDone}
+        >
+          Cancel
+        </button>
+      </div>
+      {save.error ? <ErrorNote error={save.error} /> : null}
+    </Card>
+  );
+}
+
 export function DealDetail() {
   const { current } = useNavigation();
   const qc = useQueryClient();
   const id = current.recordId;
   const [text, setText] = useState("");
+  const [editing, setEditing] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["deal-related", id],
@@ -93,6 +267,17 @@ export function DealDetail() {
   const { deal, company, contacts, notes } = data;
   const closed = deal.stage === "won" || deal.stage === "lost";
 
+  if (editing) {
+    return (
+      <EditDeal
+        deal={deal}
+        companyId={company?.id ?? null}
+        contactIds={contacts.map((p) => p.id)}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
       <div className="space-y-4">
@@ -111,9 +296,19 @@ export function DealDetail() {
                   .join(" · ") || "No category or close date"}
               </p>
             </div>
-            <p className="money text-lg font-semibold">
-              {formatMoney(deal.amountCents)}
-            </p>
+            <div className="flex items-baseline gap-3">
+              <p className="money text-lg font-semibold">
+                {formatMoney(deal.amountCents)}
+              </p>
+              <button
+                type="button"
+                className="text-sm underline"
+                style={muted}
+                onClick={() => setEditing(true)}
+              >
+                Edit
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 flex items-center gap-2">
