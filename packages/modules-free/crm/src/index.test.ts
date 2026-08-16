@@ -5,7 +5,7 @@ import { db, schema } from "@sentrello/db";
 import type { SentrelloEnv } from "@sentrello/module-sdk";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import crm from "./index";
+import crm, { displayName } from "./index";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const email = `crm-${suffix}@example.test`;
@@ -263,4 +263,127 @@ test("an omitted date is still omitted", async () => {
     body: JSON.stringify({ title: "No due date" }),
   });
   expect(res.status).toBe(201);
+});
+
+/**
+ * The display name is written, not computed.
+ *
+ * Invoices, quotes and the customer portal select `name` directly, so an
+ * invoice addressed to nobody because somebody edited a surname would surface
+ * far from the CRM that caused it.
+ */
+test("a contact's display name follows its first and last name", () => {
+  expect(displayName({ firstName: "Ada", lastName: "Lovelace" })).toBe(
+    "Ada Lovelace",
+  );
+  expect(displayName({ firstName: "  Ada  ", lastName: "" })).toBe("Ada");
+});
+
+test("an edit that never mentions a name does not wipe it", () => {
+  // Most existing contacts are a single string with no first or last name at
+  // all; a PATCH changing a phone number must leave that alone.
+  expect(displayName({ name: "Redwood Handyman Co." })).toBe(
+    "Redwood Handyman Co.",
+  );
+  expect(displayName({ phone: "0117 496 0000" })).toBeUndefined();
+});
+
+/**
+ * Moving a card on the kanban. Stage and position travel together because
+ * dragging is one action — two calls would leave a card that changed column
+ * but not order if the second failed.
+ */
+test("a deal moves column and position in one call", async () => {
+  const created = await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Roof repair", amountCents: 120_000 }),
+  });
+  expect(created.status).toBe(201);
+  const { deal } = (await created.json()) as { deal: { id: string } };
+
+  const moved = await app.request(
+    `http://localhost/api/deals/${deal.id}/move`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ stage: "won", position: 2 }),
+    },
+  );
+  expect(moved.status).toBe(200);
+  const body = (await moved.json()) as {
+    deal: { stage: string; position: number };
+  };
+  expect(body.deal.stage).toBe("won");
+  expect(body.deal.position).toBe(2);
+});
+
+test("a move that says nothing is refused rather than silently doing nothing", async () => {
+  const created = await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Gutter clean" }),
+  });
+  const { deal } = (await created.json()) as { deal: { id: string } };
+
+  const res = await app.request(`http://localhost/api/deals/${deal.id}/move`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({}),
+  });
+  expect(res.status).toBe(400);
+});
+
+/**
+ * A contact that cannot show what it is attached to is a row in a table. This
+ * endpoint is what the UI reads to stop the application looking like unrelated
+ * parts.
+ */
+test("a contact comes back with everything it connects to", async () => {
+  const madeContact = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ firstName: "Ada", lastName: "Lovelace" }),
+  });
+  const { contact } = (await madeContact.json()) as {
+    contact: { id: string; name: string };
+  };
+  expect(contact.name).toBe("Ada Lovelace");
+
+  await app.request("http://localhost/api/notes", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      entityType: "contact",
+      entityId: contact.id,
+      text: "Wants a quote for the roof",
+    }),
+  });
+  await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Roof", contactIds: [contact.id] }),
+  });
+
+  const res = await app.request(
+    `http://localhost/api/contacts/${contact.id}/related`,
+    { headers },
+  );
+  expect(res.status).toBe(200);
+  const related = (await res.json()) as {
+    notes: unknown[];
+    deals: { name: string }[];
+  };
+  expect(related.notes).toHaveLength(1);
+  expect(related.deals.map((d) => d.name)).toEqual(["Roof"]);
+});
+
+test("another organisation's contact is not found", async () => {
+  // The org filter is the tenant boundary; a related-records endpoint that
+  // spans five tables is exactly where forgetting it would leak most.
+  const res = await app.request(
+    "http://localhost/api/contacts/00000000-0000-0000-0000-000000000000/related",
+    { headers },
+  );
+  expect(res.status).toBe(404);
 });

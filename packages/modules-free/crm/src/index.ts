@@ -5,7 +5,7 @@ import {
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 /**
  * Org-scoped CRUD for one table. Every query carries the organizationId filter
@@ -86,6 +86,10 @@ function crud<T extends keyof typeof tables>(
       if (!parsed.ok) {
         return c.json({ error: `${parsed.field} is not a date` }, 400);
       }
+      if (resource === "contacts") {
+        const name = displayName(parsed.value);
+        if (name) parsed.value.name = name;
+      }
       const [row] = await db
         .insert(table)
         .values({ ...parsed.value, organizationId: orgId })
@@ -106,6 +110,10 @@ function crud<T extends keyof typeof tables>(
       const parsed = withParsedDates(rest);
       if (!parsed.ok) {
         return c.json({ error: `${parsed.field} is not a date` }, 400);
+      }
+      if (resource === "contacts") {
+        const name = displayName(parsed.value);
+        if (name) parsed.value.name = name;
       }
       const [row] = await db
         .update(table)
@@ -219,7 +227,189 @@ const tables = {
     singular: "tag",
     permission: "crm",
   },
+  deals: {
+    table: schema.deals,
+    path: "deals",
+    singular: "deal",
+    permission: "crm",
+  },
+  notes: {
+    table: schema.notes,
+    path: "notes",
+    singular: "note",
+    permission: "crm",
+  },
 } as const;
+
+/**
+ * A contact's display name, always first + last.
+ *
+ * Written on every save rather than computed on read, because invoices,
+ * quotes and the customer portal select `name` directly — and an invoice
+ * addressed to an empty string because somebody edited a surname is not a
+ * failure anyone would connect back to the CRM.
+ */
+export function displayName(body: Record<string, unknown>): string | undefined {
+  const first = typeof body.firstName === "string" ? body.firstName.trim() : "";
+  const last = typeof body.lastName === "string" ? body.lastName.trim() : "";
+  const joined = [first, last].filter(Boolean).join(" ");
+  if (joined) return joined;
+  // Neither name given: leave whatever `name` was sent alone, so a contact
+  // recorded as a single string — which is most of them, historically — is not
+  // wiped by an edit that never mentioned it.
+  return typeof body.name === "string" ? body.name : undefined;
+}
+
+/**
+ * The kanban, and everything a contact is attached to.
+ *
+ * Registered by hand rather than through `crud` because neither is a row
+ * operation: one reorders a column, the other answers a question that spans
+ * five tables.
+ */
+function registerCrmScreens(
+  ctx: Parameters<Parameters<typeof defineModule>[0]["register"]>[0],
+) {
+  /**
+   * Move a deal: which column, and where in it.
+   *
+   * Position and stage together in one call, because dragging a card is one
+   * action to the person doing it. Two calls would leave a card that had
+   * changed column but not order if the second failed.
+   */
+  ctx.app.patch(
+    "/api/deals/:id/move",
+    requireSession(),
+    requirePermission({ crm: ["update"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const body = (await c.req.json().catch(() => ({}))) as {
+        stage?: string;
+        position?: number;
+      };
+
+      const stage = typeof body.stage === "string" ? body.stage : undefined;
+      const position =
+        typeof body.position === "number" && Number.isFinite(body.position)
+          ? Math.max(0, Math.trunc(body.position))
+          : undefined;
+      if (!stage && position === undefined) {
+        return c.json({ error: "a stage or a position is required" }, 400);
+      }
+
+      const [row] = await db
+        .update(schema.deals)
+        .set({
+          ...(stage ? { stage } : {}),
+          ...(position === undefined ? {} : { position }),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.deals.id, c.req.param("id")),
+            eq(schema.deals.organizationId, orgId),
+          ),
+        )
+        .returning();
+      if (!row) return c.json({ error: "not found" }, 404);
+      return c.json({ deal: row });
+    },
+  );
+
+  /**
+   * One contact, and everything it connects to.
+   *
+   * The whole point of the rework: a contact that cannot show its deals, notes
+   * and tasks is a row in a table, and the application reads as unrelated
+   * parts because that is what it serves.
+   */
+  ctx.app.get(
+    "/api/contacts/:id/related",
+    requireSession(),
+    requirePermission({ crm: ["read"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const id = c.req.param("id");
+
+      const [contact] = await db
+        .select()
+        .from(schema.contacts)
+        .where(
+          and(
+            eq(schema.contacts.id, id),
+            eq(schema.contacts.organizationId, orgId),
+          ),
+        )
+        .limit(1);
+      if (!contact) return c.json({ error: "not found" }, 404);
+
+      const [company, notes, tasks, tagRows, allDeals] = await Promise.all([
+        contact.companyId
+          ? db
+              .select()
+              .from(schema.companies)
+              .where(
+                and(
+                  eq(schema.companies.id, contact.companyId),
+                  eq(schema.companies.organizationId, orgId),
+                ),
+              )
+              .limit(1)
+          : Promise.resolve([]),
+        db
+          .select()
+          .from(schema.notes)
+          .where(
+            and(
+              eq(schema.notes.organizationId, orgId),
+              eq(schema.notes.entityType, "contact"),
+              eq(schema.notes.entityId, id),
+            ),
+          )
+          .orderBy(desc(schema.notes.createdAt)),
+        db
+          .select()
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.organizationId, orgId),
+              eq(schema.tasks.contactId, id),
+            ),
+          ),
+        db
+          .select({ tag: schema.tags })
+          .from(schema.taggables)
+          .innerJoin(schema.tags, eq(schema.taggables.tagId, schema.tags.id))
+          .where(
+            and(
+              eq(schema.taggables.entityType, "contact"),
+              eq(schema.taggables.entityId, id),
+              eq(schema.tags.organizationId, orgId),
+            ),
+          ),
+        // Deals hold their contacts in a jsonb array, so the filter happens
+        // here rather than in SQL. Fine at the scale this product targets —
+        // under twenty staff — and honest about it rather than pretending a
+        // clever query exists.
+        // ponytail: scan-and-filter; move to a join table if a business ever
+        // has enough deals for this to show.
+        db
+          .select()
+          .from(schema.deals)
+          .where(eq(schema.deals.organizationId, orgId)),
+      ]);
+
+      return c.json({
+        contact,
+        company: company[0] ?? null,
+        deals: allDeals.filter((d) => (d.contactIds ?? []).includes(id)),
+        notes,
+        tasks,
+        tags: tagRows.map((r) => r.tag),
+      });
+    },
+  );
+}
 
 export default defineModule({
   id: "crm",
@@ -231,11 +421,26 @@ export default defineModule({
       order: 10,
       group: "Sales",
     });
+    ctx.registerNav({
+      id: "companies",
+      label: "Companies",
+      order: 11,
+      group: "Sales",
+    });
+    // The pipeline. Named Deals as Atomic CRM has it; the quote-to-payment
+    // flow is Make Deal, which is a different thing that used to share a name.
+    ctx.registerNav({
+      id: "deals",
+      label: "Deals",
+      order: 12,
+      group: "Sales",
+    });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
     }
     for (const resource of Object.keys(tables) as (keyof typeof tables)[]) {
       crud(ctx, resource);
     }
+    registerCrmScreens(ctx);
   },
 });
