@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
 import { authClient, useSession } from "../lib/auth";
+import { QrCode } from "../lib/qr";
 import { useTheme } from "../lib/theme";
 import {
   Button,
@@ -400,9 +401,10 @@ function Sessions({
  * matters: enabling first and verifying later is how somebody scans a code
  * into an app they then delete and loses their own books.
  *
- * No QR code. Drawing one means an encoder, which means a dependency in a
- * public repository for something every authenticator app can also do from a
- * typed secret. Worth revisiting if people find the typing annoying.
+ * The code is shown as a QR to scan and as a secret to type. Both, because a
+ * phone camera is how nearly everybody does this, and somebody setting up an
+ * authenticator on the same machine they are reading this on has no camera to
+ * point at their own screen.
  */
 function TwoFactor() {
   const session = useSession();
@@ -414,6 +416,7 @@ function TwoFactor() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
+  const [uri, setUri] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -428,10 +431,11 @@ function TwoFactor() {
       setError(error.message ?? "That did not work");
       return;
     }
-    // The secret out of the otpauth URI, because that is what somebody types
-    // into their authenticator app when there is nothing to scan.
-    const uri = data?.totpURI ?? "";
-    setSecret(new URL(uri).searchParams.get("secret"));
+    // The URI is what the QR encodes; the secret inside it is what somebody
+    // types when they are setting the app up on this very machine.
+    const totpUri = data?.totpURI ?? "";
+    setUri(totpUri);
+    setSecret(new URL(totpUri).searchParams.get("secret"));
     setBackupCodes(data?.backupCodes ?? []);
   }
 
@@ -448,6 +452,7 @@ function TwoFactor() {
       return;
     }
     setSecret(null);
+    setUri(null);
     session.refetch?.();
   }
 
@@ -495,10 +500,26 @@ function TwoFactor() {
       ) : secret ? (
         <>
           <p className="text-sm" style={muted}>
-            Add this to your authenticator app, then enter the code it shows.
+            Scan this with your authenticator app, then enter the code it shows.
             Nothing changes until that code is accepted.
           </p>
-          <p className="money mt-2 text-lg tracking-widest">{secret}</p>
+          <div className="mt-3 flex flex-wrap items-start gap-4">
+            {uri ? (
+              <div className="rounded p-2" style={{ background: "#ffffff" }}>
+                <QrCode
+                  value={uri}
+                  label="Scan this with your authenticator app"
+                />
+              </div>
+            ) : null}
+            <div>
+              <p className="text-xs" style={muted}>
+                Or type this in — for setting up an app on this same machine,
+                where there is no camera to point at the screen.
+              </p>
+              <p className="money mt-1 text-lg tracking-widest">{secret}</p>
+            </div>
+          </div>
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <Field label="Code from the app">
               <Input
