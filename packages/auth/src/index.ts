@@ -48,6 +48,28 @@ export const auth = betterAuth({
   ...(google ? { socialProviders: google } : {}),
   // Closed by default: first-run owner, invitation, or an explicit opt-in.
   hooks: { before: signUpGuard },
+  /**
+   * Signed in until you sign out, or thirty minutes idle.
+   *
+   * Better Auth extends a session when it is used, but only once per
+   * `updateAge` — so those two together are what make it a rolling window
+   * rather than a hard cut-off. Left at the defaults (seven days, refreshed
+   * daily) a shared or walked-away-from screen stays signed in for a week,
+   * which is the wrong default for software holding a business's books.
+   *
+   * `updateAge` of a minute rather than zero: zero writes to the session row
+   * on every single request, and one write a minute gives the same thirty
+   * minutes to within a rounding error.
+   *
+   * This also makes `session.updated_at` mean what it looks like it means —
+   * the last time somebody did something. The demo's idle reset reads it, and
+   * at the default of a day it was stale during active use, so the demo wiped
+   * itself out from under whoever was using it.
+   */
+  session: {
+    expiresIn: 30 * 60,
+    updateAge: 60,
+  },
   databaseHooks: {
     session: {
       create: {
