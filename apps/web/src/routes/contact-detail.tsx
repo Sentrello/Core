@@ -1,12 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import {
+  LabelledList,
+  type Labelled as ListRow,
+  tidy,
+  withBlank,
+} from "../lib/labelled-list";
 import { RelatedLink, useNavigation } from "../lib/navigation";
 import {
   Button,
   Card,
   Empty,
   ErrorNote,
+  Field,
+  Input,
   Loading,
   formatDate,
   formatMoney,
@@ -64,6 +72,135 @@ function ways(primary: string | null, rest: Labelled[] | null): Labelled[] {
     if (item.value && item.value !== primary) out.push(item);
   }
   return out;
+}
+
+/**
+ * Correcting the record.
+ *
+ * A CRM you cannot fix a phone number in is worse than one missing a bulk
+ * importer: the wrong number is used, an invoice goes to the wrong address, and
+ * the only remedy is deleting the contact and losing everything attached to it.
+ */
+function EditContact({
+  contact,
+  onDone,
+}: {
+  contact: Related["contact"];
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    firstName: contact.firstName ?? "",
+    lastName: contact.lastName ?? "",
+    title: contact.title ?? "",
+    email: contact.email ?? "",
+    phone: contact.phone ?? "",
+    linkedinUrl: contact.linkedinUrl ?? "",
+  });
+  const [emails, setEmails] = useState<ListRow[]>(withBlank(contact.emails));
+  const [phones, setPhones] = useState<ListRow[]>(withBlank(contact.phones));
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/api/contacts/${contact.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...form,
+          // Empty strings would overwrite a real value with nothing; null is
+          // how you say "there isn't one".
+          title: form.title || null,
+          email: form.email || null,
+          phone: form.phone || null,
+          linkedinUrl: form.linkedinUrl || null,
+          emails: tidy(emails),
+          phones: tidy(phones),
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contact-related", contact.id] });
+      // The list shows the display name, which first and last just changed.
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      onDone();
+    },
+  });
+
+  const set = (patch: Partial<typeof form>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  return (
+    <Card>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="First name">
+          <Input
+            value={form.firstName}
+            onChange={(e) => set({ firstName: e.target.value })}
+          />
+        </Field>
+        <Field label="Last name">
+          <Input
+            value={form.lastName}
+            onChange={(e) => set({ lastName: e.target.value })}
+          />
+        </Field>
+        <Field label="Job title">
+          <Input
+            value={form.title}
+            onChange={(e) => set({ title: e.target.value })}
+          />
+        </Field>
+        <Field label="LinkedIn">
+          <Input
+            value={form.linkedinUrl}
+            onChange={(e) => set({ linkedinUrl: e.target.value })}
+          />
+        </Field>
+        <Field label="Main email" hint="The one invoices and reminders use.">
+          <Input
+            value={form.email}
+            onChange={(e) => set({ email: e.target.value })}
+          />
+        </Field>
+        <Field label="Main phone">
+          <Input
+            value={form.phone}
+            onChange={(e) => set({ phone: e.target.value })}
+          />
+        </Field>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <Field label="Other emails">
+          <LabelledList
+            rows={emails}
+            onChange={setEmails}
+            placeholder="email"
+          />
+        </Field>
+        <Field label="Other phones">
+          <LabelledList
+            rows={phones}
+            onChange={setPhones}
+            placeholder="phone"
+          />
+        </Field>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+        <button
+          type="button"
+          className="text-sm underline"
+          style={muted}
+          onClick={onDone}
+        >
+          Cancel
+        </button>
+      </div>
+      {save.error ? <ErrorNote error={save.error} /> : null}
+    </Card>
+  );
 }
 
 function Tags({
@@ -342,6 +479,7 @@ function Notes({
 export function ContactDetail() {
   const { current } = useNavigation();
   const id = current.recordId;
+  const [editing, setEditing] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["contact-related", id],
@@ -359,6 +497,10 @@ export function ContactDetail() {
   const phones = ways(contact.phone, contact.phones);
   const open = deals.filter((d) => d.stage !== "won" && d.stage !== "lost");
 
+  if (editing) {
+    return <EditContact contact={contact} onDone={() => setEditing(false)} />;
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
       <div className="space-y-4">
@@ -371,7 +513,17 @@ export function ContactDetail() {
                   "No job title"}
               </p>
             </div>
-            <Tags contactId={contact.id} attached={tags} />
+            <div className="flex items-center gap-2">
+              <Tags contactId={contact.id} attached={tags} />
+              <button
+                type="button"
+                className="text-sm underline"
+                style={muted}
+                onClick={() => setEditing(true)}
+              >
+                Edit
+              </button>
+            </div>
           </div>
 
           {/* The company is a record, not a label — following it is the point. */}

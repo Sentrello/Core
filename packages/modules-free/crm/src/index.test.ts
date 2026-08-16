@@ -627,3 +627,71 @@ test("a deal only returns the contacts actually on it", async () => {
   const body = (await res.json()) as { contacts: unknown[] };
   expect(body.contacts).toHaveLength(0);
 });
+
+/**
+ * Editing has to be able to clear a field as well as set one. An empty string
+ * where a null belongs leaves "" in the database, which reads back as a value
+ * and prints as a blank line on an invoice.
+ */
+test("a contact's details can be corrected, including cleared", async () => {
+  const made = await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      firstName: "Marguerite",
+      lastName: "Osei",
+      title: "Owner",
+      phone: "503 555 0142",
+    }),
+  });
+  const { contact } = (await made.json()) as { contact: { id: string } };
+
+  const res = await app.request(`http://localhost/api/contacts/${contact.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      firstName: "Marguerite",
+      lastName: "Osei-Bonsu",
+      title: null,
+      phones: [{ label: "mobile", value: "503 555 0187" }],
+    }),
+  });
+  expect(res.status).toBe(200);
+
+  const body = (await res.json()) as {
+    contact: {
+      name: string;
+      title: string | null;
+      phones: { value: string }[] | null;
+    };
+  };
+  // The display name follows the surname change, because invoices read it.
+  expect(body.contact.name).toBe("Marguerite Osei-Bonsu");
+  expect(body.contact.title).toBeNull();
+  expect(body.contact.phones?.[0]?.value).toBe("503 555 0187");
+});
+
+test("a company can be corrected after it is created", async () => {
+  const made = await app.request("http://localhost/api/companies", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Brixton Tap" }),
+  });
+  const { company } = (await made.json()) as { company: { id: string } };
+
+  const res = await app.request(
+    `http://localhost/api/companies/${company.id}`,
+    {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ name: "The Brixton Tap", size: 12, sector: null }),
+    },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    company: { name: string; size: number | null; sector: string | null };
+  };
+  expect(body.company.name).toBe("The Brixton Tap");
+  expect(body.company.size).toBe(12);
+  expect(body.company.sector).toBeNull();
+});

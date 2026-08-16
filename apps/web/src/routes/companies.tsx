@@ -138,6 +138,152 @@ export function Companies() {
   );
 }
 
+/** Correcting a company. It could not be changed at all once created. */
+function EditCompany({
+  company,
+  onDone,
+}: {
+  company: Company;
+  onDone: () => void;
+}) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name: company.name,
+    sector: company.sector ?? "",
+    size: company.size ? String(company.size) : "",
+    phone: company.phone ?? "",
+    website: company.website ?? "",
+    address: company.address ?? "",
+    city: company.city ?? "",
+    country: company.country ?? "",
+    description: company.description ?? "",
+  });
+  const set = (patch: Partial<typeof form>) =>
+    setForm((f) => ({ ...f, ...patch }));
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/api/companies/${company.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: form.name,
+          // Empty means "not recorded", not "an empty string" — and size is a
+          // number or nothing, never NaN from a blank box.
+          sector: form.sector || null,
+          size: form.size.trim() ? Number(form.size) : null,
+          phone: form.phone || null,
+          website: form.website || null,
+          address: form.address || null,
+          city: form.city || null,
+          country: form.country || null,
+          description: form.description || null,
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-related", company.id] });
+      qc.invalidateQueries({ queryKey: ["companies"] });
+      onDone();
+    },
+  });
+
+  return (
+    <Card>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Name">
+          <Input
+            value={form.name}
+            onChange={(e) => set({ name: e.target.value })}
+          />
+        </Field>
+        <Field label="Sector">
+          <Input
+            value={form.sector}
+            onChange={(e) => set({ sector: e.target.value })}
+          />
+        </Field>
+        <Field label="People" hint="Roughly. Nobody knows the exact number.">
+          <Input
+            value={form.size}
+            inputMode="numeric"
+            onChange={(e) => set({ size: e.target.value })}
+          />
+        </Field>
+        <Field label="Phone">
+          <Input
+            value={form.phone}
+            onChange={(e) => set({ phone: e.target.value })}
+          />
+        </Field>
+        <Field label="Website">
+          <Input
+            value={form.website}
+            onChange={(e) => set({ website: e.target.value })}
+          />
+        </Field>
+        <Field label="City">
+          <Input
+            value={form.city}
+            onChange={(e) => set({ city: e.target.value })}
+          />
+        </Field>
+        <Field label="Country">
+          <Input
+            value={form.country}
+            onChange={(e) => set({ country: e.target.value })}
+          />
+        </Field>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <Field label="Address">
+          <textarea
+            rows={2}
+            value={form.address}
+            onChange={(e) => set({ address: e.target.value })}
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            style={{
+              background: "var(--surface-raised)",
+              borderColor: "var(--border)",
+              color: "var(--text)",
+            }}
+          />
+        </Field>
+        <Field label="Notes on the business">
+          <textarea
+            rows={2}
+            value={form.description}
+            onChange={(e) => set({ description: e.target.value })}
+            className="w-full rounded border px-2 py-1.5 text-sm"
+            style={{
+              background: "var(--surface-raised)",
+              borderColor: "var(--border)",
+              color: "var(--text)",
+            }}
+          />
+        </Field>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <Button
+          onClick={() => save.mutate()}
+          disabled={!form.name.trim() || save.isPending}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+        <button
+          type="button"
+          className="text-sm underline"
+          style={muted}
+          onClick={onDone}
+        >
+          Cancel
+        </button>
+      </div>
+      {save.error ? <ErrorNote error={save.error} /> : null}
+    </Card>
+  );
+}
+
 /**
  * One company: who works there, what is in flight.
  *
@@ -148,6 +294,7 @@ export function Companies() {
 export function CompanyDetail() {
   const { current } = useNavigation();
   const id = current.recordId;
+  const [editing, setEditing] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["company-related", id],
@@ -164,11 +311,25 @@ export function CompanyDetail() {
   const open = deals.filter((d) => !CLOSED.has(d.stage));
   const inFlight = open.reduce((sum, d) => sum + d.amountCents, 0);
 
+  if (editing) {
+    return <EditCompany company={company} onDone={() => setEditing(false)} />;
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
       <div className="space-y-4">
         <Card>
-          <p className="text-lg font-semibold">{company.name}</p>
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-lg font-semibold">{company.name}</p>
+            <button
+              type="button"
+              className="text-sm underline"
+              style={muted}
+              onClick={() => setEditing(true)}
+            >
+              Edit
+            </button>
+          </div>
           <p className="text-sm" style={muted}>
             {[
               company.sector,
