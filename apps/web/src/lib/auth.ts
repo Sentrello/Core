@@ -74,6 +74,10 @@ interface MemberApi {
     data?: { members: Member[] };
     error?: { message?: string };
   }>;
+  inviteMember: (input: {
+    email: string;
+    role: string;
+  }) => Promise<{ error?: { message?: string } }>;
   updateMemberRole: (input: {
     memberId: string;
     role: string;

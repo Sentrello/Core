@@ -20,7 +20,8 @@
     "@sentrello/module-profile": "*",
     "@sentrello/module-settings": "*",
     "@sentrello/email": "*",
-    "@sentrello/module-dashboard": "*"
+    "@sentrello/module-dashboard": "*",
+    "@sentrello/module-users": "*"
   },
   "devDependencies": {
     "jose": "^6.0.0"

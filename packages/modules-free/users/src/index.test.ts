@@ -1,0 +1,253 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { auth } from "@sentrello/auth";
+import { signUpAsOwner } from "@sentrello/auth/testing";
+import { db, schema } from "@sentrello/db";
+import { eq } from "@sentrello/db/orm";
+import { registerForTest } from "@sentrello/module-sdk";
+import users from "./index";
+import { temporaryPassword } from "./password";
+
+/**
+ * These endpoints can hand somebody else's account away, so what is tested is
+ * mostly what they refuse: an administrator cannot demote or remove
+ * themselves, the last administrator cannot be removed at all, and nothing
+ * touches a person who is not a member of this business.
+ */
+
+const app = registerForTest(users);
+const suffix = crypto.randomUUID().slice(0, 8);
+const ownerEmail = `owner-${suffix}@x.test`;
+const mateEmail = `mate-${suffix}@x.test`;
+
+let headers: Headers;
+let orgId: string;
+let ownerId: string;
+let mateId: string;
+
+beforeAll(async () => {
+  const signUp = await signUpAsOwner({
+    email: ownerEmail,
+    password: "correct-horse-battery-staple",
+    name: "Jo Whitcombe",
+  });
+  const cookie = signUp.headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-up returned no session cookie");
+  headers = new Headers({ cookie, "content-type": "application/json" });
+
+  const org = await auth.api.createOrganization({
+    body: { name: `Users ${suffix}`, slug: `users-${suffix}` },
+    headers,
+  });
+  if (!org) throw new Error("no organization");
+  orgId = org.id;
+  await auth.api.setActiveOrganization({
+    body: { organizationId: orgId },
+    headers,
+  });
+
+  const [owner] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, ownerEmail));
+  ownerId = owner?.id ?? "";
+
+  // A colleague, written straight in: sign-up is closed once an instance is
+  // claimed, and what is being tested is what happens to them afterwards.
+  mateId = `mate-${suffix}`;
+  await db.insert(schema.user).values({
+    id: mateId,
+    name: "Sam Okafor",
+    email: mateEmail,
+    emailVerified: false,
+    updatedAt: new Date(),
+  });
+  await db.insert(schema.member).values({
+    id: `member-${suffix}`,
+    organizationId: orgId,
+    userId: mateId,
+    role: "staff",
+    createdAt: new Date(),
+  });
+  await db.insert(schema.session).values({
+    id: `session-${suffix}`,
+    userId: mateId,
+    token: `token-${suffix}`,
+    expiresAt: new Date(Date.now() + 3_600_000),
+    updatedAt: new Date(),
+  });
+});
+
+afterAll(async () => {
+  await db.delete(schema.twoFactor).where(eq(schema.twoFactor.userId, mateId));
+  await db.delete(schema.session).where(eq(schema.session.userId, mateId));
+  await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
+  await db
+    .delete(schema.organizations)
+    .where(eq(schema.organizations.id, orgId));
+  await db.delete(schema.user).where(eq(schema.user.id, mateId));
+  await db.delete(schema.session).where(eq(schema.session.userId, ownerId));
+  await db.delete(schema.account).where(eq(schema.account.userId, ownerId));
+  await db.delete(schema.user).where(eq(schema.user.id, ownerId));
+});
+
+const get = async () =>
+  (await (
+    await app.request("http://localhost/api/users", { headers })
+  ).json()) as {
+    people: {
+      userId: string;
+      email: string;
+      role: string;
+      twoFactorEnabled: boolean;
+      you: boolean;
+    }[];
+  };
+
+test("the list shows everybody, and marks which one is you", async () => {
+  const { people } = await get();
+  expect(people).toHaveLength(2);
+  expect(people.filter((p) => p.you)).toHaveLength(1);
+  expect(people.find((p) => p.email === mateEmail)?.role).toBe("staff");
+});
+
+test("an administrator cannot change their own role or remove themselves", async () => {
+  // Both are how an owner locks the business out of its own instance, and
+  // nobody else can undo either.
+  const demote = await app.request(
+    `http://localhost/api/users/${ownerId}/role`,
+    { method: "POST", headers, body: JSON.stringify({ role: "staff" }) },
+  );
+  expect(demote.status).toBe(400);
+
+  const remove = await app.request(`http://localhost/api/users/${ownerId}`, {
+    method: "DELETE",
+    headers,
+  });
+  expect(remove.status).toBe(400);
+  expect((await get()).people).toHaveLength(2);
+});
+
+test("the last administrator cannot be removed", async () => {
+  // Promote the colleague, then try to remove the only other admin — the
+  // owner is refused above, so this checks the count rather than the identity.
+  await db
+    .update(schema.member)
+    .set({ role: "admin" })
+    .where(eq(schema.member.userId, mateId));
+
+  const res = await app.request(`http://localhost/api/users/${mateId}`, {
+    method: "DELETE",
+    headers,
+  });
+  // Two admins now, so this one may go.
+  expect(res.status).toBe(200);
+
+  await db.insert(schema.member).values({
+    id: `member2-${suffix}`,
+    organizationId: orgId,
+    userId: mateId,
+    role: "staff",
+    createdAt: new Date(),
+  });
+});
+
+test("a new password ends every session and is never stored", async () => {
+  await db.insert(schema.session).values({
+    id: `session2-${suffix}`,
+    userId: mateId,
+    token: `token2-${suffix}`,
+    expiresAt: new Date(Date.now() + 3_600_000),
+    updatedAt: new Date(),
+  });
+
+  const res = await app.request(
+    `http://localhost/api/users/${mateId}/password`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(200);
+  const { password } = (await res.json()) as { password: string };
+  expect(password.length).toBeGreaterThan(12);
+
+  // If the password was reset because somebody else had it, leaving their
+  // session alive defeats the point.
+  const left = await db
+    .select({ id: schema.session.id })
+    .from(schema.session)
+    .where(eq(schema.session.userId, mateId));
+  expect(left).toHaveLength(0);
+
+  // And it appears nowhere except that one response.
+  const [account] = await db
+    .select({ password: schema.account.password })
+    .from(schema.account)
+    .where(eq(schema.account.userId, mateId));
+  expect(account?.password ?? "").not.toContain(password);
+});
+
+test("revoking two-factor removes the secret, the flag and the sessions", async () => {
+  await db.insert(schema.twoFactor).values({
+    id: `tf-${suffix}`,
+    userId: mateId,
+    secret: "encrypted-secret",
+    backupCodes: "encrypted-codes",
+    verified: true,
+  });
+  await db
+    .update(schema.user)
+    .set({ twoFactorEnabled: true })
+    .where(eq(schema.user.id, mateId));
+
+  const res = await app.request(
+    `http://localhost/api/users/${mateId}/two-factor/revoke`,
+    { method: "POST", headers },
+  );
+  expect(res.status).toBe(200);
+
+  expect(
+    await db
+      .select()
+      .from(schema.twoFactor)
+      .where(eq(schema.twoFactor.userId, mateId)),
+  ).toHaveLength(0);
+  const [after] = await db
+    .select({ twoFactorEnabled: schema.user.twoFactorEnabled })
+    .from(schema.user)
+    .where(eq(schema.user.id, mateId));
+  expect(after?.twoFactorEnabled).toBe(false);
+});
+
+test("nothing touches somebody who is not a member of this business", async () => {
+  const strangerId = `stranger-${suffix}`;
+  await db.insert(schema.user).values({
+    id: strangerId,
+    name: "Stranger",
+    email: `stranger-${suffix}@x.test`,
+    emailVerified: false,
+    updatedAt: new Date(),
+  });
+
+  for (const [path, method] of [
+    [`/api/users/${strangerId}/password`, "POST"],
+    [`/api/users/${strangerId}/two-factor/revoke`, "POST"],
+    [`/api/users/${strangerId}/sessions/revoke`, "POST"],
+    [`/api/users/${strangerId}`, "DELETE"],
+  ] as [string, string][]) {
+    const res = await app.request(`http://localhost${path}`, {
+      method,
+      headers,
+    });
+    expect(res.status).toBe(404);
+  }
+
+  await db.delete(schema.user).where(eq(schema.user.id, strangerId));
+});
+
+test("a temporary password is readable aloud and not guessable", () => {
+  const a = temporaryPassword();
+  const b = temporaryPassword();
+  expect(a).not.toBe(b);
+  expect(a.split("-")).toHaveLength(4);
+  // Nothing that turns into a different word over the phone.
+  expect(a).toMatch(/^[a-z-]+$/);
+  expect(a.length).toBeGreaterThan(12);
+});

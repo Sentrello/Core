@@ -24,6 +24,7 @@ import invoicing from "@sentrello/module-invoicing";
 import profile from "@sentrello/module-profile";
 import type { SentrelloEnv, SentrelloModule } from "@sentrello/module-sdk";
 import settings from "@sentrello/module-settings";
+import users from "@sentrello/module-users";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
@@ -47,6 +48,7 @@ const modules: SentrelloModule[] = [
   bookkeeping,
   settings,
   profile,
+  users,
   ...(await discoverOptionalModules()),
 ];
 const { nav, navVisibility, navPermissions, tiers, loaded, jobs } = loadModules(

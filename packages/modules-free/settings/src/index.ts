@@ -52,17 +52,6 @@ export default defineModule({
   id: "settings",
   tier: "free",
   register(ctx) {
-    // Managing who may do what. Under Configure beside Settings, and guarded
-    // the same way — the DEV notes put this with the Super Admin and Admins.
-    ctx.registerNav({
-      id: "roles",
-      label: "Roles",
-      order: 91,
-      group: "Configure",
-      // Who may do what is an owner's question, and a staff member offered it
-      // learns only that they are not trusted with it.
-      requires: { settings: ["update"] },
-    });
     ctx.registerNav({
       id: "settings",
       label: "Settings",

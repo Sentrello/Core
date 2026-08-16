@@ -22,10 +22,10 @@ import { Invoices } from "./routes/invoices";
 import { ModuleScreen } from "./routes/module-screen";
 import { type Profile, ProfileScreen } from "./routes/profile";
 import { Quotes } from "./routes/quotes";
-import { Roles } from "./routes/roles";
 import { Settings } from "./routes/settings";
 import { Setup } from "./routes/setup";
 import { SignIn } from "./routes/sign-in";
+import { Users } from "./routes/users";
 
 /**
  * Which screen a nav entry opens.
@@ -44,7 +44,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
   bookkeeping: Bookkeeping,
   forms: Forms,
   settings: Settings,
-  roles: Roles,
+  users: Users,
   profile: ProfileScreen,
 };
 

@@ -208,6 +208,7 @@ test("/healthz boots and reports Free when no token is present", async () => {
       "bookkeeping",
       "settings",
       "profile",
+      "users",
     ],
     // A bundle that will not load is reported rather than only logged: it
     // takes every feature of that module with it.
@@ -261,7 +262,7 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
     "forms",
     "bookkeeping",
     "settings",
-    "roles",
+    "users",
   ]);
   expect(body.loaded).not.toContain("pro-core");
   await cleanUp();

@@ -28,6 +28,7 @@
         "@sentrello/module-profile": "*",
         "@sentrello/module-sdk": "*",
         "@sentrello/module-settings": "*",
+        "@sentrello/module-users": "*",
         "hono": "^4.6.0",
       },
       "devDependencies": {
@@ -192,6 +193,16 @@
         "@sentrello/module-sdk": "*",
         "drizzle-orm": "^0.45.0",
         "hono": "^4.6.0",
+      },
+    },
+    "packages/modules-free/users": {
+      "name": "@sentrello/module-users",
+      "dependencies": {
+        "@sentrello/auth": "*",
+        "@sentrello/db": "*",
+        "@sentrello/email": "*",
+        "@sentrello/module-sdk": "*",
+        "drizzle-orm": "^0.45.0",
       },
     },
   },
@@ -425,6 +436,8 @@
     "@sentrello/module-sdk": ["@sentrello/module-sdk@workspace:packages/module-sdk"],
 
     "@sentrello/module-settings": ["@sentrello/module-settings@workspace:packages/modules-free/settings"],
+
+    "@sentrello/module-users": ["@sentrello/module-users@workspace:packages/modules-free/users"],
 
     "@sentrello/server": ["@sentrello/server@workspace:apps/server"],
 
