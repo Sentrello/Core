@@ -1,5 +1,8 @@
 import { ac, roles } from "@sentrello/auth/permissions";
-import { organizationClient } from "better-auth/client/plugins";
+import {
+  organizationClient,
+  twoFactorClient,
+} from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 // The client mirrors the server's access control, so the UI can hide what the
@@ -9,6 +12,11 @@ export const authClient = createAuthClient({
   // statement, while the plugin's parameter is typed against the open
   // `Statements` shape
   plugins: [
+    // No `onTwoFactorRedirect`: there are no pages to redirect between. The
+    // sign-in response says `twoFactorRedirect` and the form asks for the code
+    // in place, which is also what somebody halfway through signing in
+    // expects to happen.
+    twoFactorClient(),
     // dynamicAccessControl here as well as on the server: without it the
     // client has no createRole/listRoles at all, and the roles screen has
     // nothing to call.

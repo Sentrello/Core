@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { authClient, useSession } from "../lib/auth";
 import { useTheme } from "../lib/theme";
 import {
   Button,
@@ -95,6 +96,7 @@ export function ProfileScreen() {
     <div className="space-y-4">
       <Details profile={data} onSaved={() => qc.invalidateQueries()} />
       <Password />
+      <TwoFactor />
       <Sessions
         sessions={data.sessions}
         onRevoked={() => qc.invalidateQueries({ queryKey: ["profile"] })}
@@ -386,6 +388,172 @@ function Sessions({
         ))}
       </ul>
       {revoke.error ? <ErrorNote error={revoke.error} /> : null}
+    </Card>
+  );
+}
+
+/**
+ * Two-factor authentication.
+ *
+ * Turning it on hands back a secret and ten backup codes, and nothing is
+ * actually enabled until a code from the app has been checked. That order
+ * matters: enabling first and verifying later is how somebody scans a code
+ * into an app they then delete and loses their own books.
+ *
+ * No QR code. Drawing one means an encoder, which means a dependency in a
+ * public repository for something every authenticator app can also do from a
+ * typed secret. Worth revisiting if people find the typing annoying.
+ */
+function TwoFactor() {
+  const session = useSession();
+  const enabled = Boolean(
+    (session.data?.user as { twoFactorEnabled?: boolean } | undefined)
+      ?.twoFactorEnabled,
+  );
+
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [secret, setSecret] = useState<string | null>(null);
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function start() {
+    setBusy(true);
+    setError(null);
+    const { data, error } = await authClient.twoFactor.enable({ password });
+    setBusy(false);
+    setPassword("");
+    if (error) {
+      setError(error.message ?? "That did not work");
+      return;
+    }
+    // The secret out of the otpauth URI, because that is what somebody types
+    // into their authenticator app when there is nothing to scan.
+    const uri = data?.totpURI ?? "";
+    setSecret(new URL(uri).searchParams.get("secret"));
+    setBackupCodes(data?.backupCodes ?? []);
+  }
+
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    const { error } = await authClient.twoFactor.verifyTotp({
+      code: code.trim(),
+    });
+    setBusy(false);
+    setCode("");
+    if (error) {
+      setError(error.message ?? "That code was not accepted");
+      return;
+    }
+    setSecret(null);
+    session.refetch?.();
+  }
+
+  async function turnOff() {
+    setBusy(true);
+    setError(null);
+    const { error } = await authClient.twoFactor.disable({ password });
+    setBusy(false);
+    setPassword("");
+    if (error) {
+      setError(error.message ?? "That did not work");
+      return;
+    }
+    setBackupCodes(null);
+    session.refetch?.();
+  }
+
+  return (
+    <Card>
+      <p className="mb-2 font-medium">Two-factor authentication</p>
+
+      {enabled ? (
+        <>
+          <p className="text-sm" style={muted}>
+            On. Signing in asks for a code from your authenticator app.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <Field label="Your password">
+              <Input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <Button
+              variant="danger"
+              onClick={turnOff}
+              disabled={busy || !password}
+            >
+              Turn off
+            </Button>
+          </div>
+        </>
+      ) : secret ? (
+        <>
+          <p className="text-sm" style={muted}>
+            Add this to your authenticator app, then enter the code it shows.
+            Nothing changes until that code is accepted.
+          </p>
+          <p className="money mt-2 text-lg tracking-widest">{secret}</p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <Field label="Code from the app">
+              <Input
+                inputMode="numeric"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+              />
+            </Field>
+            <Button onClick={confirm} disabled={busy || !code.trim()}>
+              Turn on
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm" style={muted}>
+            Off. A password alone is one leaked reused password away from your
+            books.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <Field label="Your password">
+              <Input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <Button onClick={start} disabled={busy || !password}>
+              Set up
+            </Button>
+          </div>
+        </>
+      )}
+
+      {backupCodes ? (
+        <div className="mt-3">
+          <p className="text-sm font-medium">Backup codes</p>
+          <p className="text-xs" style={muted}>
+            Shown once. Keep them somewhere that is not the phone with the app
+            on it — they are the way back in when that phone is gone.
+          </p>
+          <ul className="money mt-1 grid grid-cols-2 gap-x-4 text-sm sm:grid-cols-5">
+            {backupCodes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mt-2 text-sm" style={{ color: "var(--color-danger)" }}>
+          {error}
+        </p>
+      ) : null}
     </Card>
   );
 }

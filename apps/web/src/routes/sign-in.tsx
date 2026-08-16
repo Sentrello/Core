@@ -8,17 +8,38 @@ export function SignIn() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set when the password was right and an authenticator code is still owed.
+  const [needsCode, setNeedsCode] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await authClient.signIn.email({ email, password });
+    const { data, error } = await authClient.signIn.email({ email, password });
     setBusy(false);
-    if (error) setError(error.message ?? "Could not sign in");
+    if (error) {
+      setError(error.message ?? "Could not sign in");
+      return;
+    }
+    // Asked for in place rather than on a page of its own: there are no pages
+    // here, and somebody halfway through signing in should not appear to have
+    // been sent somewhere else.
+    if ((data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
+      setNeedsCode(true);
+    }
   }
 
   if (forgot) return <ForgotPassword onBack={() => setForgot(false)} />;
+  if (needsCode) {
+    return (
+      <TwoFactorPrompt
+        onCancel={() => {
+          setNeedsCode(false);
+          setPassword("");
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
@@ -84,6 +105,104 @@ export function SignIn() {
           style={{ color: "var(--text-muted)" }}
         >
           Forgot your password?
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/**
+ * The second factor, asked for once the password was right.
+ *
+ * A backup code is accepted in the same box. Somebody whose phone is in a
+ * river is exactly the person who cannot find a second link to click, and the
+ * two codes are different enough lengths to tell apart without asking.
+ */
+function TwoFactorPrompt({ onCancel }: { onCancel: () => void }) {
+  const [code, setCode] = useState("");
+  const [trust, setTrust] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const trimmed = code.trim();
+    const { error } =
+      trimmed.length > 6
+        ? await authClient.twoFactor.verifyBackupCode({ code: trimmed })
+        : await authClient.twoFactor.verifyTotp({
+            code: trimmed,
+            trustDevice: trust,
+          });
+    setBusy(false);
+    if (error) setError(error.message ?? "That code was not accepted");
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm space-y-4 rounded border p-6"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--surface-raised)",
+        }}
+      >
+        <h1 className="text-lg font-semibold">Enter your code</h1>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          From your authenticator app, or one of your backup codes.
+        </p>
+
+        <label className="block space-y-1 text-sm">
+          <span>Code</span>
+          <input
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="w-full rounded border px-2 py-1"
+            style={{ borderColor: "var(--border)" }}
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={trust}
+            onChange={(e) => setTrust(e.target.checked)}
+          />
+          Do not ask on this device for 30 days
+        </label>
+
+        {error ? (
+          <p className="text-sm" style={{ color: "var(--color-danger)" }}>
+            {error}
+          </p>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={busy}
+          className="w-full rounded px-3 py-2 text-sm font-medium"
+          style={{
+            background: "var(--color-brand-500)",
+            color: "var(--color-neutral-50)",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy ? "Checking…" : "Continue"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onCancel}
+          className="w-full text-sm underline underline-offset-2"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Start again
         </button>
       </form>
     </div>

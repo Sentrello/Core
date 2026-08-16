@@ -4,7 +4,7 @@ import { emailAdapter } from "@sentrello/email";
 import { passwordResetEmail } from "@sentrello/email/templates";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization } from "better-auth/plugins";
+import { organization, twoFactor } from "better-auth/plugins";
 import { ac, roles } from "./permissions";
 import { signUpGuard } from "./signup-policy";
 
@@ -104,6 +104,18 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    /**
+     * Optional, per person, and off until proved.
+     *
+     * `twoFactorEnabled` is only written once a code from the authenticator
+     * has actually verified, which is the property that stops somebody
+     * locking themselves out of their own books by scanning a code into an
+     * app they then delete.
+     *
+     * The issuer is what the authenticator app lists it under. A business
+     * running this sees "Sentrello" beside the account it belongs to.
+     */
+    twoFactor({ issuer: process.env.SENTRELLO_ISSUER ?? "Sentrello" }),
     organization({
       ac,
       roles,

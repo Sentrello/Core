@@ -5,11 +5,16 @@ import {
   timestamp,
   boolean,
   index,
+  integer,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
+  // Written by Better Auth's two-factor plugin, and only once a code has
+  // actually been verified — enabling without proving the authenticator works
+  // is how somebody locks themselves out of their own books.
+  twoFactorEnabled: boolean("two_factor_enabled").default(false),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
@@ -202,3 +207,29 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+/**
+ * The two-factor plugin's table. Its shape is the plugin's contract, not ours.
+ *
+ * The secret is encrypted by Better Auth with the instance's auth secret
+ * before it arrives here, so a database backup does not carry usable
+ * authenticator seeds — which matters more on self-hosted machines, where the
+ * backup often sits on the same disk.
+ */
+export const twoFactor = pgTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: boolean("verified").default(true),
+    // The plugin's own rate limit: enough wrong codes and it stops accepting
+    // any for a while, which is what makes a six-digit number worth having.
+    failedVerificationCount: integer("failed_verification_count").default(0),
+    lockedUntil: timestamp("locked_until"),
+  },
+  (table) => [index("two_factor_user_id_idx").on(table.userId)],
+);
