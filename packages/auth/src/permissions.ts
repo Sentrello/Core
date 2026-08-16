@@ -26,6 +26,10 @@ export const statement = {
   inventory: ["read", "create", "update", "delete"],
   documents: ["read", "create", "update", "delete"],
   hr: ["read", "create", "update", "delete", "approve"],
+  // Quote to payment as one job. Hyphenated because the module id is, and a
+  // resource whose name does not match its module is a permission somebody
+  // will eventually register under the wrong key.
+  "make-deal": ["read", "create", "update"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -47,6 +51,7 @@ export const admin = ac.newRole({
   inventory: ["read", "create", "update", "delete"],
   documents: ["read", "create", "update", "delete"],
   hr: ["read", "create", "update", "delete", "approve"],
+  "make-deal": ["read", "create", "update"],
 });
 
 export const accounting = ac.newRole({
@@ -70,6 +75,9 @@ export const accounting = ac.newRole({
   documents: ["read"],
   // payroll needs to see who was off; approving leave is the owner's job
   hr: ["read"],
+  // whoever bills is exactly who needs to see what has been agreed and not
+  // yet invoiced
+  "make-deal": ["read", "create", "update"],
 });
 
 export const staff = ac.newRole({
@@ -93,6 +101,8 @@ export const staff = ac.newRole({
   // everyone books their own time off; approving it is deliberately not here,
   // because in a business of five people that separation is the only control
   hr: ["read", "create"],
+  // staff quote work and see where it got to; writing one off is the owner's
+  "make-deal": ["read", "create"],
 });
 
 // External portal users — RBAC is intentionally tiny; row-level scoping to their

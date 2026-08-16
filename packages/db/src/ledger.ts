@@ -69,3 +69,42 @@ export async function postJournalEntry(
     return entry;
   });
 }
+
+/**
+ * The entry raising an invoice makes: Dr Accounts Receivable, Cr Income, plus
+ * any tax.
+ *
+ * Here rather than in the invoicing module because more than one thing raises
+ * an invoice — the invoices screen, a quote being converted, and now a deal
+ * that bills itself the moment a customer accepts. Every one of them has to
+ * post the same entry, or revenue exists on a document and nowhere in the
+ * books.
+ */
+export async function postInvoiceIssued(
+  orgId: string,
+  invoice: {
+    id: string;
+    number: string;
+    subtotalCents: number;
+    taxCents: number;
+    totalCents: number;
+  },
+): Promise<void> {
+  const [ar, income, taxPayable] = await Promise.all([
+    ensureAccount(orgId, CORE_ACCOUNTS.accountsReceivable),
+    ensureAccount(orgId, CORE_ACCOUNTS.salesIncome),
+    ensureAccount(orgId, CORE_ACCOUNTS.taxPayable),
+  ]);
+  await postJournalEntry(
+    orgId,
+    `Invoice ${invoice.number}`,
+    `invoice:${invoice.id}`,
+    [
+      { accountId: ar, debitCents: invoice.totalCents },
+      { accountId: income, creditCents: invoice.subtotalCents },
+      ...(invoice.taxCents > 0
+        ? [{ accountId: taxPayable, creditCents: invoice.taxCents }]
+        : []),
+    ],
+  );
+}

@@ -16,6 +16,7 @@ export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/mod-time-tracking",
   "@sentrello/mod-scheduling",
   "@sentrello/mod-shop",
+  "@sentrello/mod-make-deal",
   // sentrello.com only, and additionally gated by SENTRELLO_CONTROL_PLANE=true
   "@sentrello/control-plane",
   // bmp.sentrello.com only: Sentrello's own console, gated again by

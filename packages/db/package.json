@@ -10,7 +10,8 @@
     "./orm": "./src/orm.ts",
     "./ssl": "./src/ssl.ts",
     "./module-migrations": "./src/module-migrations.ts",
-    "./portal": "./src/portal.ts"
+    "./portal": "./src/portal.ts",
+    "./documents": "./src/documents.ts"
   },
   "scripts": {
     "migrate": "bun run src/migrate.ts"
