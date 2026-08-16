@@ -31,7 +31,9 @@ Prefer to look before you run a script? It's [right
 here](https://get.sentrello.com/install.sh), and the image is
 `ghcr.io/sentrello/core` (amd64 and arm64).
 
-Manage it afterwards with `sentrello status | update | backup | logs`.
+Manage it afterwards with `sentrello status | update | rollback | backup |
+restore | logs`. Updates can also be applied from Settings, and every update
+takes a database backup before it starts and refuses to continue without one.
 
 ---
 
@@ -50,11 +52,12 @@ column someone can overwrite.
 
 ![Income, expenses and net, read from the ledger](docs/images/bookkeeping.jpg)
 
-### With Pro and the optional modules
-
-**Deals** — the pipeline as a board, with what each stage is worth.
+**Deals** — the pipeline as a board, with what each stage is worth. Free, and
+part of the CRM.
 
 ![Deals as a five-column board](docs/images/deals.jpg)
+
+### With Pro and the optional modules
 
 **Time tracking** — timer-first, because the thing being timed is often a run
 to the post office and a form that demands a project first is a form nobody
@@ -89,7 +92,10 @@ hardware you control.
 
 **Free tier — this repository, AGPLv3:**
 
-- **CRM** — contacts, companies, activities, tasks, tags
+- **Dashboard** — what is owed, what is overdue, what needs answering, and how
+  the server itself is doing
+- **CRM** — contacts, companies, deals as a pipeline board, activities, tasks,
+  notes, tags, and CSV import and export
 - **Invoicing** — quotes and invoices with per-line tax, partial payments,
   sequential numbering, and quote-to-invoice conversion
 - **Bookkeeping** — chart of accounts, expenses, and a real double-entry ledger
@@ -97,17 +103,23 @@ hardware you control.
 - **Forms** — contact and quote forms you can embed on any website, posting
   straight to your own instance
 - **Accounts and roles** — Admin, Accounting, Staff and an external Customer
-  role that only ever sees its own invoices
+  role that only ever sees its own invoices, plus roles you define yourself
+  when those four do not fit your business
 - **Settings** — your business name, address and tax number, which appear on
-  every invoice, quote and customer page you send
+  every invoice, quote and customer page you send; one-click updates and
+  rollback; and an opt-in usage report you are asked about at install and can
+  turn off at any time
+- **Your account** — your own preferences, two-factor authentication, and the
+  list of devices you are signed in on
 
 **Pro and optional modules** are commercial and live in private repositories.
-Pro adds the deal pipeline, a 360° customer timeline, recurring invoices, credit
-notes, online payments, bank CSV import with reconciliation, AR aging, and the
-balance sheet, cash flow and tax reports.
+Pro adds a 360° customer timeline, recurring invoices, credit notes, online
+payments, bank CSV import with reconciliation, AR aging, and the balance sheet,
+cash flow and tax reports.
 
 Optional modules are bought individually on top of Pro — scheduling, time
-tracking, shop, projects, inventory, documents and people. A module needs Pro
+tracking, shop, projects, inventory, documents, people, and Make Deal, which
+carries one job from quote to payment. A module needs Pro
 underneath it; it is not sold against the Free tier.
 
 The Free tier is a real product, not a trial. It doesn't expire, doesn't nag,
