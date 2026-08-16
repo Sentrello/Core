@@ -1,8 +1,45 @@
 import { expect, test } from "bun:test";
+import { signUpAsOwner } from "@sentrello/auth/testing";
+import { db, schema } from "@sentrello/db";
+import { eq } from "@sentrello/db/orm";
 import { type SentrelloEnv, defineModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
 import { loadModules } from "./loader";
+
+/**
+ * A signed-in caller, because `/api/_meta` names the version and every module
+ * a business bought — the first thing anyone probing an instance wants, and
+ * none of it any use before signing in.
+ */
+async function signedIn(): Promise<{
+  headers: Headers;
+  cleanUp: () => Promise<void>;
+}> {
+  const email = `boot-${crypto.randomUUID().slice(0, 8)}@x.test`;
+  const signUp = await signUpAsOwner({
+    email,
+    password: "correct-horse-battery-staple",
+    name: "Owner",
+  });
+  const cookie = signUp.headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-up returned no session cookie");
+  return {
+    headers: new Headers({ cookie }),
+    // Left behind, any owner makes the instance look claimed and every
+    // bootstrap test then fails on a database this one dirtied.
+    cleanUp: async () => {
+      const [u] = await db
+        .select({ id: schema.user.id })
+        .from(schema.user)
+        .where(eq(schema.user.email, email));
+      if (!u) return;
+      await db.delete(schema.session).where(eq(schema.session.userId, u.id));
+      await db.delete(schema.account).where(eq(schema.account.userId, u.id));
+      await db.delete(schema.user).where(eq(schema.user.id, u.id));
+    },
+  };
+}
 
 const freeGate = () => false;
 const proGate = (need: { tier?: "pro"; module?: string }) =>
@@ -196,7 +233,17 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
   process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
   process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
   const server = (await import("./index")).default;
-  const res = await server.fetch(new Request("http://localhost/api/_meta"));
+
+  // Anonymous callers are told nothing at all.
+  const anonymous = await server.fetch(
+    new Request("http://localhost/api/_meta"),
+  );
+  expect(anonymous.status).toBe(401);
+
+  const { headers, cleanUp } = await signedIn();
+  const res = await server.fetch(
+    new Request("http://localhost/api/_meta", { headers }),
+  );
   const body = (await res.json()) as {
     nav: { id: string }[];
     loaded: string[];
@@ -215,6 +262,7 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
     "roles",
   ]);
   expect(body.loaded).not.toContain("pro-core");
+  await cleanUp();
 });
 
 test("a module's screens are not served when the module did not load", async () => {
@@ -229,10 +277,12 @@ test("a module's screens are not served when the module did not load", async () 
   );
   expect(res.status).toBe(404);
 
+  const { headers, cleanUp } = await signedIn();
   const meta = (await (
-    await server.fetch(new Request("http://localhost/api/_meta"))
+    await server.fetch(new Request("http://localhost/api/_meta", { headers }))
   ).json()) as { ui: string[] };
   expect(meta.ui).toEqual([]);
+  await cleanUp();
 });
 
 test("a module id cannot be used to reach a file off the map", async () => {

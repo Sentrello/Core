@@ -40,7 +40,7 @@ const modules: SentrelloModule[] = [
   profile,
   ...(await discoverOptionalModules()),
 ];
-const { nav, loaded, jobs } = loadModules(app, gate, modules);
+const { nav, navVisibility, loaded, jobs } = loadModules(app, gate, modules);
 
 // A module brings its own tables. Applying them here — after the licence has
 // decided what loads — means a customer who buys a module gets its schema on the
@@ -90,9 +90,25 @@ const uiModules = serveModuleUi(app, modules, loaded);
  * release's screen against the new API. Five minutes of a subtly wrong screen
  * is a support ticket nobody can reproduce.
  */
-app.get("/api/_meta", (c) =>
-  c.json({ nav, loaded, ui: uiModules, version: VERSION }),
-);
+/**
+ * What this instance is running, for the shell to build itself from.
+ *
+ * Behind a session. It names the version and every module the business
+ * bought, which is the first thing anyone probing an instance wants and none
+ * of it is any use before signing in — the sign-in page reads `/api/_signin`.
+ *
+ * Nav entries a module marked as narrower than the instance are dropped here
+ * rather than hidden in the browser, so an entry somebody is not offered is
+ * genuinely absent from what they are sent.
+ */
+app.get("/api/_meta", requireSession(), (c) => {
+  const session = c.get("session");
+  const visible = nav.filter((item) => {
+    const allowed = navVisibility.get(item.id);
+    return allowed ? allowed(session) : true;
+  });
+  return c.json({ nav: visible, loaded, ui: uiModules, version: VERSION });
+});
 
 /**
  * What the sign-in page needs before anyone has signed in.

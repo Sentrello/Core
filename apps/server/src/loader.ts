@@ -3,6 +3,7 @@ import type {
   EntitlementNeed,
   SentrelloEnv,
   SentrelloModule,
+  SentrelloSession,
 } from "@sentrello/module-sdk";
 import type { Hono } from "hono";
 
@@ -20,6 +21,9 @@ export function loadModules(
     order?: number;
     moduleId: string;
   }[] = [];
+  // Kept apart from `nav` deliberately: a predicate cannot be serialised, and
+  // the nav array is handed to the browser as it stands.
+  const navVisibility = new Map<string, (s: SentrelloSession) => boolean>();
   const permissions: string[] = [];
   const jobs: ModuleJob[] = [];
   const loaded = new Set<string>();
@@ -39,7 +43,10 @@ export function loadModules(
       m.register({
         app,
         entitled,
-        registerNav: (i) => nav.push({ ...i, moduleId: m.id }),
+        registerNav: ({ visibleTo, ...i }) => {
+          nav.push({ ...i, moduleId: m.id });
+          if (visibleTo) navVisibility.set(i.id, visibleTo);
+        },
         registerPermission: (p) => permissions.push(p),
         // namespaced: two modules may both want a job called "reminders"
         registerJob: (j) => jobs.push({ ...j, name: `${m.id}:${j.name}` }),
@@ -49,5 +56,5 @@ export function loadModules(
     }
   }
   nav.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  return { nav, permissions, jobs, loaded: [...loaded] };
+  return { nav, navVisibility, permissions, jobs, loaded: [...loaded] };
 }

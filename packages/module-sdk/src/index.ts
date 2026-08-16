@@ -58,6 +58,20 @@ export interface ModuleContext {
      * host has never heard of. Anything without one sits at the top level.
      */
     group?: string;
+    /**
+     * Who is offered this entry, when "everybody who can load the module" is
+     * the wrong answer.
+     *
+     * The loader decides whether a module runs at all; this decides whether a
+     * person is shown the way in. Most modules need neither — a business's own
+     * staff all see Invoices. It exists for entries whose audience is narrower
+     * than the instance: an allow-list held in the environment rather than in
+     * any role a business can grant.
+     *
+     * Not a security boundary. The routes are still guarded; this only stops
+     * offering somebody a door that will not open.
+     */
+    visibleTo?: (session: SentrelloSession) => boolean;
   }) => void;
   registerPermission: (permission: string) => void;
   /**
