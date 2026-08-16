@@ -42,6 +42,9 @@ afterAll(async () => {
   // claimed, and every bootstrap test then fails on a database this one
   // dirtied — which reads as those tests breaking, not this one.
   await db
+    .delete(schema.payments)
+    .where(eq(schema.payments.organizationId, orgId));
+  await db
     .delete(schema.invoices)
     .where(eq(schema.invoices.organizationId, orgId));
   await db.delete(schema.tasks).where(eq(schema.tasks.organizationId, orgId));
@@ -301,4 +304,51 @@ test("a completed follow-up is not still asking to be done", async () => {
   expect(body.attention.some((a) => a.summary === "Already handled")).toBe(
     false,
   );
+});
+
+/**
+ * "Owed to you" is what is still owed, not what was billed.
+ *
+ * Found by taking a part payment on a walk through a new instance and
+ * watching the headline figure not move. A business that took a deposit this
+ * morning is owed the rest — overstating it inflates the one number on this
+ * screen somebody is most likely to act on, and chasing a customer for money
+ * they have already sent is worse than not chasing at all.
+ */
+test("a part payment comes off what is owed", async () => {
+  const [invoice] = await db
+    .insert(schema.invoices)
+    .values({
+      organizationId: orgId,
+      number: "INV-PART",
+      status: "partial",
+      currency: "USD",
+      issueDate: new Date(),
+      dueDate: new Date(Date.now() - 86_400_000),
+      subtotalCents: 100_000,
+      taxCents: 0,
+      totalCents: 100_000,
+    })
+    .returning();
+  if (!invoice) throw new Error("no invoice");
+
+  await db.insert(schema.payments).values({
+    organizationId: orgId,
+    invoiceId: invoice.id,
+    amountCents: 40_000,
+    method: "bank transfer",
+  });
+
+  const body = (await (await get()).json()) as {
+    money: { owedCents: number; overdueCents: number };
+    attention: { summary: string; amountCents?: number }[];
+  };
+
+  // 60,000 of this one, plus the 80,000 the earlier tests left unpaid.
+  expect(body.money.owedCents).toBe(140_000);
+  // It is overdue, and it is overdue for the balance rather than the total.
+  expect(body.money.overdueCents).toBe(120_000);
+  expect(
+    body.attention.find((a) => a.summary.includes("INV-PART"))?.amountCents,
+  ).toBe(60_000);
 });

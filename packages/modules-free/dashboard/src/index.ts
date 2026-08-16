@@ -63,38 +63,68 @@ export default defineModule({
         const orgId = activeOrganizationId(c.get("session"));
         const now = new Date();
 
-        const [invoices, quotes, tasks, contacts, deals] = await Promise.all([
-          db
-            .select()
-            .from(schema.invoices)
-            .where(eq(schema.invoices.organizationId, orgId)),
-          db
-            .select()
-            .from(schema.quotes)
-            .where(eq(schema.quotes.organizationId, orgId)),
-          db
-            .select()
-            .from(schema.tasks)
-            .where(
-              and(
-                eq(schema.tasks.organizationId, orgId),
-                eq(schema.tasks.done, false),
+        const [invoices, quotes, tasks, contacts, deals, payments] =
+          await Promise.all([
+            db
+              .select()
+              .from(schema.invoices)
+              .where(eq(schema.invoices.organizationId, orgId)),
+            db
+              .select()
+              .from(schema.quotes)
+              .where(eq(schema.quotes.organizationId, orgId)),
+            db
+              .select()
+              .from(schema.tasks)
+              .where(
+                and(
+                  eq(schema.tasks.organizationId, orgId),
+                  eq(schema.tasks.done, false),
+                ),
               ),
-            ),
-          db
-            .select({ id: schema.contacts.id })
-            .from(schema.contacts)
-            .where(eq(schema.contacts.organizationId, orgId)),
-          db
-            .select()
-            .from(schema.deals)
-            .where(
-              and(
-                eq(schema.deals.organizationId, orgId),
-                isNull(schema.deals.archivedAt),
+            db
+              .select({ id: schema.contacts.id })
+              .from(schema.contacts)
+              .where(eq(schema.contacts.organizationId, orgId)),
+            db
+              .select()
+              .from(schema.deals)
+              .where(
+                and(
+                  eq(schema.deals.organizationId, orgId),
+                  isNull(schema.deals.archivedAt),
+                ),
               ),
-            ),
-        ]);
+            db
+              .select({
+                invoiceId: schema.payments.invoiceId,
+                amountCents: schema.payments.amountCents,
+              })
+              .from(schema.payments)
+              .where(eq(schema.payments.organizationId, orgId)),
+          ]);
+
+        /**
+         * What is still owed, not what was billed.
+         *
+         * A business that took a deposit this morning is owed the rest, and
+         * telling it otherwise overstates the one number on this screen it is
+         * most likely to act on. Found by taking a part payment and watching
+         * the figure not move.
+         */
+        const paidByInvoice = new Map<string, number>();
+        for (const p of payments) {
+          if (!p.invoiceId) continue;
+          paidByInvoice.set(
+            p.invoiceId,
+            (paidByInvoice.get(p.invoiceId) ?? 0) + p.amountCents,
+          );
+        }
+        const balanceOf = (invoice: { id: string; totalCents: number }) =>
+          Math.max(
+            0,
+            invoice.totalCents - (paidByInvoice.get(invoice.id) ?? 0),
+          );
 
         // Money owed, and how much of it is late. Two numbers rather than one,
         // because "you are owed £8,000" and "£6,000 of it is overdue" call for
@@ -102,11 +132,11 @@ export default defineModule({
         const unpaid = invoices.filter(
           (i) => i.status !== "paid" && i.status !== "void",
         );
-        const owedCents = unpaid.reduce((sum, i) => sum + i.totalCents, 0);
+        const owedCents = unpaid.reduce((sum, i) => sum + balanceOf(i), 0);
         const overdue = unpaid.filter(
           (i) => i.dueDate && new Date(i.dueDate) < now,
         );
-        const overdueCents = overdue.reduce((sum, i) => sum + i.totalCents, 0);
+        const overdueCents = overdue.reduce((sum, i) => sum + balanceOf(i), 0);
 
         const openDeals = deals.filter(
           (d) => d.stage !== "won" && d.stage !== "lost",
@@ -120,7 +150,9 @@ export default defineModule({
             detail: i.dueDate
               ? `Due ${new Date(i.dueDate).toDateString()}`
               : "",
-            amountCents: i.totalCents,
+            // The balance, for the same reason: chasing somebody for money
+            // they have already sent is worse than not chasing at all.
+            amountCents: balanceOf(i),
           })),
           ...quotes
             .filter((q) => q.status === "sent")
