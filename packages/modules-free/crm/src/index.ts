@@ -271,6 +271,198 @@ function registerCrmScreens(
   ctx: Parameters<Parameters<typeof defineModule>[0]["register"]>[0],
 ) {
   /**
+   * Bring a spreadsheet of contacts in.
+   *
+   * The rows arrive already mapped to our field names — the mapping happens on
+   * the screen, where somebody can see their own column headings. This end
+   * only has to be careful about what it writes.
+   *
+   * Companies are matched by name and created when missing, because a
+   * spreadsheet says "Ellesmere Dental", not a uuid, and asking somebody to
+   * create thirty companies before importing their contacts is the reason the
+   * import never happens.
+   */
+  ctx.app.post(
+    "/api/contacts/import",
+    requireSession(),
+    requirePermission({ crm: ["create"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const body = (await c.req.json().catch(() => ({}))) as {
+        rows?: Record<string, string>[];
+      };
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (rows.length === 0) return c.json({ error: "nothing to import" }, 400);
+      // A cap, because this runs in one request and a hundred thousand rows
+      // would hold a connection open long enough to look like a hang.
+      if (rows.length > 5000) {
+        return c.json({ error: "too many rows; split the file" }, 413);
+      }
+
+      const existingCompanies = await db
+        .select()
+        .from(schema.companies)
+        .where(eq(schema.companies.organizationId, orgId));
+      const byName = new Map(
+        existingCompanies.map((co) => [co.name.trim().toLowerCase(), co.id]),
+      );
+
+      let imported = 0;
+      let companiesCreated = 0;
+      const skipped: { row: number; why: string }[] = [];
+
+      for (const [index, raw] of rows.entries()) {
+        const firstName = (raw.firstName ?? "").trim();
+        const lastName = (raw.lastName ?? "").trim();
+        const name = [firstName, lastName].filter(Boolean).join(" ");
+        if (!name) {
+          // Nameless rows are the blank lines at the bottom of every
+          // spreadsheet. Reported rather than silently dropped.
+          skipped.push({ row: index + 2, why: "no name" });
+          continue;
+        }
+
+        let companyId: string | null = null;
+        const companyName = (raw.company ?? "").trim();
+        if (companyName) {
+          const key = companyName.toLowerCase();
+          const found = byName.get(key);
+          if (found) {
+            companyId = found;
+          } else {
+            const [made] = await db
+              .insert(schema.companies)
+              .values({ organizationId: orgId, name: companyName })
+              .returning();
+            if (made) {
+              companyId = made.id;
+              byName.set(key, made.id);
+              companiesCreated += 1;
+            }
+          }
+        }
+
+        await db.insert(schema.contacts).values({
+          organizationId: orgId,
+          name,
+          firstName: firstName || null,
+          lastName: lastName || null,
+          title: (raw.title ?? "").trim() || null,
+          email: (raw.email ?? "").trim() || null,
+          phone: (raw.phone ?? "").trim() || null,
+          linkedinUrl: (raw.linkedinUrl ?? "").trim() || null,
+          companyId,
+        });
+        imported += 1;
+      }
+
+      return c.json({ imported, companiesCreated, skipped });
+    },
+  );
+
+  /**
+   * Contacts and companies, as a spreadsheet.
+   *
+   * A trial that begins with an empty CRM and a re-typing job is a trial that
+   * ends — so getting data out matters as much as getting it in, and it is
+   * also how somebody checks an import went the way they expected.
+   */
+  ctx.app.get(
+    "/api/contacts/export.csv",
+    requireSession(),
+    requirePermission({ crm: ["read"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const [rows, allCompanies] = await Promise.all([
+        db
+          .select()
+          .from(schema.contacts)
+          .where(eq(schema.contacts.organizationId, orgId)),
+        db
+          .select()
+          .from(schema.companies)
+          .where(eq(schema.companies.organizationId, orgId)),
+      ]);
+      const companyName = new Map(allCompanies.map((co) => [co.id, co.name]));
+
+      const csv = toCsv(
+        [
+          "First name",
+          "Last name",
+          "Job title",
+          "Company",
+          "Email",
+          "Phone",
+          "Other emails",
+          "Other phones",
+          "LinkedIn",
+        ],
+        rows.map((r) => [
+          r.firstName ?? "",
+          r.lastName ?? "",
+          r.title ?? "",
+          // The company's name, not its id. A spreadsheet full of uuids is not
+          // something anybody can read, edit or import elsewhere.
+          r.companyId ? (companyName.get(r.companyId) ?? "") : "",
+          r.email ?? "",
+          r.phone ?? "",
+          (r.emails ?? []).map((e) => `${e.label}: ${e.value}`).join("; "),
+          (r.phones ?? []).map((e) => `${e.label}: ${e.value}`).join("; "),
+          r.linkedinUrl ?? "",
+        ]),
+      );
+
+      return c.body(csv, 200, {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": 'attachment; filename="contacts.csv"',
+      });
+    },
+  );
+
+  ctx.app.get(
+    "/api/companies/export.csv",
+    requireSession(),
+    requirePermission({ crm: ["read"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const rows = await db
+        .select()
+        .from(schema.companies)
+        .where(eq(schema.companies.organizationId, orgId));
+
+      const csv = toCsv(
+        [
+          "Name",
+          "Sector",
+          "People",
+          "Phone",
+          "Website",
+          "Address",
+          "City",
+          "Country",
+          "Description",
+        ],
+        rows.map((r) => [
+          r.name,
+          r.sector ?? "",
+          r.size ?? "",
+          r.phone ?? "",
+          r.website ?? "",
+          r.address ?? "",
+          r.city ?? "",
+          r.country ?? "",
+          r.description ?? "",
+        ]),
+      );
+
+      return c.body(csv, 200, {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": 'attachment; filename="companies.csv"',
+      });
+    },
+  );
+
+  /**
    * Move a deal: which column, and where in it.
    *
    * Position and stage together in one call, because dragging a card is one
@@ -637,6 +829,28 @@ function registerCrmScreens(
       });
     },
   );
+}
+
+/**
+ * One CSV field.
+ *
+ * Quoted whenever it contains a comma, a quote or a newline, with inner quotes
+ * doubled — the rules every spreadsheet expects. A note reading `Called, no
+ * answer` becomes two columns without this, and the whole file shifts by one
+ * from that row down.
+ */
+function csvField(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function toCsv(headers: string[], rows: unknown[][]): string {
+  const lines = [headers.map(csvField).join(",")];
+  for (const row of rows) lines.push(row.map(csvField).join(","));
+  // CRLF, because Excel treats a bare newline as part of the field on some
+  // platforms and the file opens as one long row.
+  return `${lines.join("\r\n")}\r\n`;
 }
 
 export default defineModule({

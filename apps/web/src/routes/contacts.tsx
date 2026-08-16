@@ -15,11 +15,13 @@ import {
   Table,
   muted,
 } from "../lib/ui";
+import { ContactsImport } from "./contacts-import";
 
 export function Contacts() {
   const qc = useQueryClient();
   const { open } = useNavigation();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -49,12 +51,31 @@ export function Contacts() {
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {/* A plain link, not a fetch: the browser downloads it with the
+              filename the server sends, and the session cookie goes along. */}
+          <a
+            href="/api/contacts/export.csv"
+            className="text-sm underline"
+            style={muted}
+          >
+            Export
+          </a>
+          <button
+            type="button"
+            className="text-sm underline"
+            style={muted}
+            onClick={() => setImporting((v) => !v)}
+          >
+            Import
+          </button>
           <Button onClick={() => setAdding((v) => !v)}>
             {adding ? "Cancel" : "Add contact"}
           </Button>
         </div>
       </div>
+
+      {importing ? <ContactsImport onDone={() => setImporting(false)} /> : null}
 
       {adding ? (
         <NewContact

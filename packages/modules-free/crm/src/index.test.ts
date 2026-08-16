@@ -5,7 +5,7 @@ import { db, schema } from "@sentrello/db";
 import type { SentrelloEnv } from "@sentrello/module-sdk";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import crm, { displayName } from "./index";
+import crm, { displayName, toCsv } from "./index";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const email = `crm-${suffix}@example.test`;
@@ -786,4 +786,148 @@ test("a contact can be moved to a different company", async () => {
     )
   ).json()) as { company: { name: string } | null };
   expect(related.company?.name).toBe("New Employer");
+});
+
+/**
+ * CSV quoting. A note reading `Called, no answer` becomes two columns without
+ * it, and every row from there down is shifted by one — which looks like the
+ * export lost data rather than mangled it.
+ */
+test("fields containing commas, quotes or newlines survive the round trip", () => {
+  const csv = toCsv(
+    ["Name", "Note"],
+    [
+      ["Osei", "Called, no answer"],
+      ["Kavanagh", 'Said "next week"'],
+      ["Achebe", "Line one\nLine two"],
+    ],
+  );
+  expect(csv).toContain('"Called, no answer"');
+  expect(csv).toContain('"Said ""next week"""');
+  expect(csv).toContain('"Line one\nLine two"');
+});
+
+test("empty and missing values are blank, not the word null", () => {
+  expect(toCsv(["A", "B"], [[null, undefined]])).toBe("A,B\r\n,\r\n");
+});
+
+test("rows end with CRLF, which is what a spreadsheet expects", () => {
+  // A bare newline opens as one long row in Excel on some platforms.
+  expect(toCsv(["A"], [["x"]])).toBe("A\r\nx\r\n");
+});
+
+test("contacts export as something a person could read", async () => {
+  const co = (await (
+    await app.request("http://localhost/api/companies", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "Ellesmere Dental" }),
+    })
+  ).json()) as { company: { id: string } };
+
+  await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      firstName: "Sunniva",
+      lastName: "Restrepo",
+      companyId: co.company.id,
+      email: "office@ellesmere.example",
+      phones: [{ label: "mobile", value: "503 555 0187" }],
+    }),
+  });
+
+  const res = await app.request("http://localhost/api/contacts/export.csv", {
+    headers,
+  });
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/csv");
+
+  const body = await res.text();
+  expect(body).toContain("Sunniva,Restrepo");
+  // The company's name, not its id: a spreadsheet of uuids is unreadable and
+  // cannot be imported anywhere else.
+  expect(body).toContain("Ellesmere Dental");
+  expect(body).not.toContain(co.company.id);
+  expect(body).toContain("mobile: 503 555 0187");
+});
+
+/**
+ * Import. Without it a trial starts with an empty CRM and a re-typing job,
+ * which is where most trials end.
+ */
+test("a spreadsheet of contacts comes in, creating companies as it goes", async () => {
+  const res = await app.request("http://localhost/api/contacts/import", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      rows: [
+        {
+          firstName: "Dermot",
+          lastName: "Kavanagh",
+          company: "Brixton Tap Ltd",
+          email: "d@example.com",
+        },
+        // Same company, spelled differently. Matching on the exact string
+        // would create it twice and split the customer in two.
+        {
+          firstName: "Nuala",
+          lastName: "Byrne",
+          company: "brixton tap ltd",
+        },
+      ],
+    }),
+  });
+  expect(res.status).toBe(200);
+
+  const body = (await res.json()) as {
+    imported: number;
+    companiesCreated: number;
+  };
+  expect(body.imported).toBe(2);
+  expect(body.companiesCreated).toBe(1);
+});
+
+test("nameless rows are reported, not silently dropped", async () => {
+  // The blank lines at the bottom of every spreadsheet. Saying nothing about
+  // them means somebody imports 500 rows, gets 480 contacts, and cannot tell
+  // which twenty are missing.
+  const res = await app.request("http://localhost/api/contacts/import", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      rows: [
+        { firstName: "Real", lastName: "Person" },
+        { firstName: "", lastName: "", email: "" },
+      ],
+    }),
+  });
+  const body = (await res.json()) as {
+    imported: number;
+    skipped: { row: number; why: string }[];
+  };
+  expect(body.imported).toBe(1);
+  expect(body.skipped).toEqual([{ row: 3, why: "no name" }]);
+});
+
+test("an import that would take too long is refused rather than hanging", async () => {
+  const rows = Array.from({ length: 5001 }, (_, i) => ({
+    firstName: "A",
+    lastName: String(i),
+  }));
+  const res = await app.request("http://localhost/api/contacts/import", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ rows }),
+  });
+  expect(res.status).toBe(413);
+});
+
+test("an empty import says so instead of reporting success", async () => {
+  const res = await app.request("http://localhost/api/contacts/import", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ rows: [] }),
+  });
+  expect(res.status).toBe(400);
 });
