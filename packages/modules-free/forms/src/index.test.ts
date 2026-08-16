@@ -5,6 +5,7 @@ import { db, eq, inArray, schema } from "@sentrello/db";
 import { registerForTest } from "@sentrello/module-sdk";
 import { HONEYPOT_FIELD, resetRateLimits } from "@sentrello/module-sdk";
 import forms from "./index";
+import { splitName } from "./index";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const email = `forms-${suffix}@example.test`;
@@ -535,4 +536,31 @@ test("the standard forms can be created, and not twice", async () => {
   });
   const second = (await again.json()) as { created: string[] };
   expect(second.created).toEqual([]);
+});
+
+/**
+ * A lead from the website should look like every other contact.
+ *
+ * The form asks for a name in one box — asking a stranger for two is a box
+ * more than they will fill in — but the CRM edits first and last separately.
+ * A lead used to arrive with both blank, so the list showed a name and the
+ * record showed none.
+ */
+test("a submitted name reaches the fields the CRM actually edits", () => {
+  expect(splitName("Ola Ferreira")).toEqual({
+    firstName: "Ola",
+    lastName: "Ferreira",
+  });
+  expect(splitName("Marguerite van der Berg")).toEqual({
+    firstName: "Marguerite",
+    lastName: "van der Berg",
+  });
+  // One word stays a first name. Plenty of people have one, and forcing it
+  // into a surname records something nobody gave.
+  expect(splitName("Prince")).toEqual({ firstName: "Prince", lastName: null });
+  expect(splitName("   ")).toEqual({ firstName: null, lastName: null });
+  expect(splitName("  Ade   Balogun  ")).toEqual({
+    firstName: "Ade",
+    lastName: "Balogun",
+  });
 });

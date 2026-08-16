@@ -523,6 +523,31 @@ async function readSubmission(req: Request): Promise<Record<string, string>> {
   return out;
 }
 
+/**
+ * A typed name, split the way the CRM stores one.
+ *
+ * A form asks for "your name" in one box, because asking a stranger on a
+ * website for two is a box more than they will fill in. The CRM keeps first
+ * and last separately, so a lead arriving from the website opened with both
+ * fields blank while the list showed its name — the same person recorded two
+ * different ways depending on which screen you were looking at.
+ *
+ * First word, then the rest. A single word stays a first name rather than
+ * being forced into a surname nobody gave: plenty of people have one name.
+ */
+export function splitName(full: string): {
+  firstName: string | null;
+  lastName: string | null;
+} {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: null, lastName: null };
+  const [first, ...rest] = parts;
+  return {
+    firstName: first ?? null,
+    lastName: rest.length > 0 ? rest.join(" ") : null,
+  };
+}
+
 /** One contact per email address: a repeat enquiry should not create a duplicate. */
 async function upsertContact(
   orgId: string,
@@ -548,7 +573,10 @@ async function upsertContact(
     .insert(schema.contacts)
     .values({
       organizationId: orgId,
+      // Both: `name` is what quotes, invoices and the portal read, and the
+      // split is what the CRM's own screens edit.
       name: name || email || "Website enquiry",
+      ...splitName(name),
       email: email || null,
       phone: payload.phone ?? null,
       kind: "lead",
