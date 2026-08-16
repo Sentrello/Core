@@ -465,3 +465,50 @@ test("another organization's forms and submissions are invisible", async () => {
     .where(eq(schema.formSubmissions.organizationId, theirs));
   await db.delete(schema.forms).where(eq(schema.forms.organizationId, theirs));
 });
+
+/**
+ * A submission becoming a deal.
+ *
+ * The contact happens on the way in; deciding the enquiry is worth pursuing is
+ * a judgement, so it is a button. A pipeline that fills itself with every
+ * newsletter sign-up stops being looked at.
+ */
+test("a submission can be promoted into the pipeline, once", async () => {
+  const formId = (
+    await db
+      .select({ id: schema.forms.id })
+      .from(schema.forms)
+      .where(eq(schema.forms.key, contactFormKey))
+  )[0]?.id;
+
+  const list = (await (
+    await app.request(`http://localhost/api/forms/${formId}/submissions`, {
+      headers,
+    })
+  ).json()) as { submissions: { id: string }[] };
+  const submissionId = list.submissions[0]?.id;
+  expect(submissionId).toBeTruthy();
+
+  const first = await app.request(
+    `http://localhost/api/forms/submissions/${submissionId}/promote`,
+    { method: "POST", headers },
+  );
+  expect(first.status).toBe(201);
+  const { deal } = (await first.json()) as {
+    deal: { id: string; stage: string; contactIds: string[] };
+  };
+  expect(deal.stage).toBe("opportunity");
+  expect(deal.contactIds).toHaveLength(1);
+
+  // Clicking twice must not make a second identical card in the same column.
+  const again = await app.request(
+    `http://localhost/api/forms/submissions/${submissionId}/promote`,
+    { method: "POST", headers },
+  );
+  const second = (await again.json()) as {
+    deal: { id: string };
+    already?: boolean;
+  };
+  expect(second.already).toBe(true);
+  expect(second.deal.id).toBe(deal.id);
+});

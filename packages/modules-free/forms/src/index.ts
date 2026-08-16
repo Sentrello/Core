@@ -135,6 +135,89 @@ export default defineModule({
 
     /** Preflight for cross-site posts. */
     /**
+     * Turn a submission into a deal.
+     *
+     * The submission already made a contact — that happens on the way in. What
+     * it cannot do by itself is decide the enquiry is worth pursuing, which is
+     * a judgement and therefore a button rather than an automatic step. A
+     * pipeline that fills itself with every newsletter sign-up stops being
+     * looked at.
+     *
+     * The form's tag becomes the deal's category, so "where did this come
+     * from" survives into the pipeline rather than stopping at the contact.
+     */
+    ctx.app.post(
+      "/api/forms/submissions/:id/promote",
+      requireSession(),
+      requirePermission({ crm: ["create"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+        const id = c.req.param("id");
+
+        const [submission] = await db
+          .select()
+          .from(schema.formSubmissions)
+          .where(
+            and(
+              eq(schema.formSubmissions.id, id),
+              eq(schema.formSubmissions.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!submission) return c.json({ error: "not found" }, 404);
+        if (!submission.contactId) {
+          return c.json({ error: "this submission has no contact" }, 409);
+        }
+
+        const [form] = await db
+          .select()
+          .from(schema.forms)
+          .where(eq(schema.forms.id, submission.formId))
+          .limit(1);
+
+        // Already promoted: return the deal rather than making a second one.
+        // Somebody clicking twice should not end up with two identical deals
+        // in the same column.
+        const existing = await db
+          .select()
+          .from(schema.deals)
+          .where(
+            and(
+              eq(schema.deals.organizationId, orgId),
+              eq(schema.deals.sourceSubmissionId, id),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) return c.json({ deal: existing[0], already: true });
+
+        const payload = submission.payload ?? {};
+        const summary =
+          [payload.subject, payload.message, payload.details]
+            .find((v) => typeof v === "string" && v.trim())
+            ?.slice(0, 80) ??
+          form?.name ??
+          "Enquiry";
+
+        const [deal] = await db
+          .insert(schema.deals)
+          .values({
+            organizationId: orgId,
+            name: summary,
+            contactIds: [submission.contactId],
+            stage: "opportunity",
+            category: form?.tag ?? form?.name ?? null,
+            description: Object.entries(payload)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join("\n"),
+            sourceSubmissionId: id,
+          })
+          .returning();
+
+        return c.json({ deal }, 201);
+      },
+    );
+
+    /**
      * The embed script itself.
      *
      * Public and unauthenticated by necessity — it runs on somebody else's

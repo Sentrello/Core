@@ -148,6 +148,14 @@ export const deals = pgTable(
     /** Filed away rather than deleted: won and lost deals are the history. */
     archivedAt: timestamp("archived_at"),
     ownerId: text("owner_id"),
+    /**
+     * The form submission this came from, when it came from one.
+     *
+     * Kept so promoting twice returns the same deal rather than making a
+     * second — somebody clicking twice should not end up with two identical
+     * cards in the same column.
+     */
+    sourceSubmissionId: uuid("source_submission_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

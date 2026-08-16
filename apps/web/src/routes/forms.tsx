@@ -24,6 +24,7 @@ export function Forms() {
   const [kind, setKind] = useState("contact");
   const [showing, setShowing] = useState<FormRow | null>(null);
   const [building, setBuilding] = useState<FormRow | null>(null);
+  const [viewing, setViewing] = useState<FormRow | null>(null);
 
   const forms = useQuery({
     queryKey: ["forms"],
@@ -94,6 +95,9 @@ export function Forms() {
               </td>
               <td className="text-right">
                 <div className="flex justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setViewing(f)}>
+                    Submissions
+                  </Button>
                   <Button variant="secondary" onClick={() => setBuilding(f)}>
                     Edit questions
                   </Button>
@@ -106,6 +110,10 @@ export function Forms() {
           ))}
         </Table>
       )}
+
+      {viewing ? (
+        <Submissions form={viewing} onClose={() => setViewing(null)} />
+      ) : null}
 
       {building ? (
         <FormBuilder
@@ -195,6 +203,100 @@ function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
         Copy
       </Button>
       {save.error ? <ErrorNote error={save.error} /> : null}
+    </Card>
+  );
+}
+
+/**
+ * What people sent, and what to do about it.
+ *
+ * A submission already made a contact on the way in. Deciding it is worth
+ * pursuing is a judgement, so promoting it into the pipeline is a button — a
+ * pipeline that fills itself with every newsletter sign-up stops being looked
+ * at.
+ */
+function Submissions({
+  form,
+  onClose,
+}: {
+  form: FormRow;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["submissions", form.id],
+    queryFn: () =>
+      api<{
+        submissions: {
+          id: string;
+          payload: Record<string, string>;
+          createdAt: string;
+          contactId: string | null;
+        }[];
+      }>(`/api/forms/${form.id}/submissions`),
+  });
+
+  const promote = useMutation({
+    mutationFn: (id: string) =>
+      api<{ already?: boolean }>(`/api/forms/submissions/${id}/promote`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deals"] });
+      qc.invalidateQueries({ queryKey: ["submissions", form.id] });
+    },
+  });
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-medium">{form.name} — submissions</p>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <Loading />
+      ) : data?.submissions.length ? (
+        <ul className="space-y-2">
+          {data.submissions.map((sub) => (
+            <li
+              key={sub.id}
+              className="border-t pt-2 text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {Object.entries(sub.payload).map(([k, v]) => (
+                    <div key={k}>
+                      <span className="text-xs" style={muted}>
+                        {k}:{" "}
+                      </span>
+                      {v}
+                    </div>
+                  ))}
+                  <div className="mt-0.5 text-xs" style={muted}>
+                    {new Date(sub.createdAt).toLocaleString()}
+                  </div>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => promote.mutate(sub.id)}
+                  disabled={promote.isPending}
+                >
+                  Add to pipeline
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm" style={muted}>
+          Nothing sent through this form yet.
+        </p>
+      )}
+      {promote.error ? <ErrorNote error={promote.error} /> : null}
     </Card>
   );
 }
