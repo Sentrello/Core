@@ -135,6 +135,93 @@ export default defineModule({
 
     /** Preflight for cross-site posts. */
     /**
+     * The forms a business would otherwise have to invent.
+     *
+     * A new instance opens the Forms screen to nothing at all and has to guess
+     * what a form is for and which fields belong on it. These are the two
+     * every small business needs — somebody asking a question, and somebody
+     * asking what a job would cost.
+     *
+     * Offered as a button in the empty state rather than created silently at
+     * first run: a business that has deliberately deleted its forms should not
+     * find them back tomorrow, and a screen that fills itself is harder to
+     * understand than one that asks.
+     */
+    ctx.app.post(
+      "/api/forms/defaults",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const orgId = activeOrganizationId(c.get("session"));
+
+        const wanted = [
+          {
+            name: "Contact us",
+            kind: "contact",
+            tag: "contact",
+            fields: [
+              {
+                name: "name",
+                label: "Your name",
+                type: "text",
+                required: true,
+              },
+              { name: "email", label: "Email", type: "email", required: true },
+              { name: "phone", label: "Phone", type: "tel" },
+              { name: "message", label: "How can we help?", type: "textarea" },
+            ],
+          },
+          {
+            name: "Request a quote",
+            kind: "quote",
+            tag: "quote",
+            fields: [
+              {
+                name: "name",
+                label: "Your name",
+                type: "text",
+                required: true,
+              },
+              { name: "email", label: "Email", type: "email", required: true },
+              { name: "phone", label: "Phone", type: "tel" },
+              {
+                name: "details",
+                label: "What needs doing?",
+                type: "textarea",
+                required: true,
+              },
+            ],
+          },
+        ];
+
+        const existing = await db
+          .select({ name: schema.forms.name })
+          .from(schema.forms)
+          .where(eq(schema.forms.organizationId, orgId));
+        const have = new Set(existing.map((f) => f.name.toLowerCase()));
+
+        const made: string[] = [];
+        for (const def of wanted) {
+          if (have.has(def.name.toLowerCase())) continue;
+          await db.insert(schema.forms).values({
+            organizationId: orgId,
+            key: crypto.randomUUID().replaceAll("-", "").slice(0, 20),
+            name: def.name,
+            kind: def.kind,
+            tag: def.tag,
+            fields: def.fields,
+            // No origins listed means this site only, which is the safe
+            // default for a form nobody has decided where to put yet.
+            allowedOrigins: [],
+          });
+          made.push(def.name);
+        }
+
+        return c.json({ created: made });
+      },
+    );
+
+    /**
      * Turn a submission into a deal.
      *
      * The submission already made a contact — that happens on the way in. What

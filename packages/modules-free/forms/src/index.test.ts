@@ -512,3 +512,27 @@ test("a submission can be promoted into the pipeline, once", async () => {
   expect(second.already).toBe(true);
   expect(second.deal.id).toBe(deal.id);
 });
+
+/**
+ * The forms a business would otherwise have to invent. A new instance opens
+ * this screen to nothing and has to guess what a form is for.
+ */
+test("the standard forms can be created, and not twice", async () => {
+  const first = await app.request("http://localhost/api/forms/defaults", {
+    method: "POST",
+    headers,
+  });
+  expect(first.status).toBe(200);
+  const { created } = (await first.json()) as { created: string[] };
+  expect(created).toContain("Contact us");
+  expect(created).toContain("Request a quote");
+
+  // Pressing it again must not double them up — the empty state is gone by
+  // then, but the endpoint is still reachable.
+  const again = await app.request("http://localhost/api/forms/defaults", {
+    method: "POST",
+    headers,
+  });
+  const second = (await again.json()) as { created: string[] };
+  expect(second.created).toEqual([]);
+});

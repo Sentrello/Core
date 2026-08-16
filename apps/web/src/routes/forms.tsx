@@ -26,6 +26,13 @@ export function Forms() {
   const [building, setBuilding] = useState<FormRow | null>(null);
   const [viewing, setViewing] = useState<FormRow | null>(null);
 
+  // Offered rather than created at first run: a business that deliberately
+  // deleted its forms should not find them back tomorrow.
+  const makeDefaults = useMutation({
+    mutationFn: () => api("/api/forms/defaults", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["forms"] }),
+  });
+
   const forms = useQuery({
     queryKey: ["forms"],
     queryFn: () => api<{ forms: FormRow[] }>("/api/forms"),
@@ -74,10 +81,22 @@ export function Forms() {
       </Card>
 
       {rows.length === 0 ? (
-        <Empty title="No forms yet">
-          A form gives you a snippet to paste into any website. Submissions
-          become contacts here.
-        </Empty>
+        <Card>
+          <p className="font-medium">No forms yet</p>
+          <p className="mt-1 mb-3 text-sm" style={muted}>
+            A form gives you one line to paste into any website. Submissions
+            arrive as contacts, and the ones worth chasing become deals.
+          </p>
+          <Button
+            onClick={() => makeDefaults.mutate()}
+            disabled={makeDefaults.isPending}
+          >
+            {makeDefaults.isPending
+              ? "Creating…"
+              : "Create a contact form and a quote form"}
+          </Button>
+          {makeDefaults.error ? <ErrorNote error={makeDefaults.error} /> : null}
+        </Card>
       ) : (
         <Table headers={["Name", "Type", "Questions", "Allowed sites", ""]}>
           {rows.map((f) => (
