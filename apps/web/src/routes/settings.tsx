@@ -34,6 +34,7 @@ interface SettingsResponse {
     paymentInstructions: string;
   };
   instance: { baseUrl: string; baseUrlMatchesRequest: boolean };
+  telemetry: { enabled: boolean; fixedOnServer: boolean };
   email: { configured: boolean; from: string | null };
   payments: {
     stripe: {
@@ -597,6 +598,8 @@ export function Settings() {
         ) : null}
       </Card>
 
+      <Telemetry telemetry={data.telemetry} />
+
       <Card>
         <p className="font-medium">This instance</p>
         <p className="mt-1 text-sm" style={muted}>
@@ -617,5 +620,57 @@ export function Settings() {
         ) : null}
       </Card>
     </div>
+  );
+}
+
+/**
+ * The usage report, and the ability to change your mind about it.
+ *
+ * Says exactly what is sent, because a claim that something is anonymous is
+ * worth nothing next to a list somebody can read. Opt-in at install; this is
+ * where it goes off again without editing a dotfile on your own server.
+ */
+function Telemetry({
+  telemetry,
+}: {
+  telemetry: { enabled: boolean; fixedOnServer: boolean };
+}) {
+  const qc = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      api("/api/settings/telemetry", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+  });
+
+  return (
+    <Card>
+      <p className="font-medium">Usage reporting</p>
+      <p className="mt-1 text-sm" style={muted}>
+        Once a day, if you allow it, this instance sends: the version it runs,
+        whether it is Free or Pro, which modules are loaded, and a band for how
+        many people use it (1, 2–5, 6–10, 11–20, 21+). Nothing else — no
+        customer records, no names, no figures, no business identifier.
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <State ok={telemetry.enabled} yes="sending" no="not sending anything" />
+        {telemetry.fixedOnServer ? (
+          <span className="text-sm" style={muted}>
+            Set on the server, so it cannot be changed here.
+          </span>
+        ) : (
+          <Button
+            variant="secondary"
+            onClick={() => toggle.mutate(!telemetry.enabled)}
+            disabled={toggle.isPending}
+          >
+            {telemetry.enabled ? "Stop sending" : "Start sending"}
+          </Button>
+        )}
+      </div>
+      {toggle.error ? <ErrorNote error={toggle.error} /> : null}
+    </Card>
   );
 }

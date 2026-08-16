@@ -3,6 +3,7 @@ import PgBoss from "pg-boss";
 import { refreshLicenseToken } from "./license-refresh";
 import { sendOverdueReminders } from "./overdue";
 import { runRecurringInvoices } from "./recurring";
+import { sendTelemetry } from "./telemetry";
 
 /** Drops `sslmode` from a connection string, leaving everything else intact. */
 export function withoutSslMode(url: string): string {
@@ -19,6 +20,7 @@ export const QUEUES = {
   recurringInvoices: "recurring-invoices",
   overdueReminders: "overdue-reminders",
   licenseRefresh: "license-refresh",
+  telemetry: "telemetry",
 } as const;
 
 /** cron schedules, UTC */
@@ -26,6 +28,9 @@ export const SCHEDULES: Record<string, string> = {
   [QUEUES.recurringInvoices]: "0 2 * * *",
   [QUEUES.overdueReminders]: "0 8 * * *",
   [QUEUES.licenseRefresh]: "0 3 * * *",
+  // Once a day, at an hour nobody is working. It sends nothing at all unless
+  // the instance was asked at install time and said yes.
+  [QUEUES.telemetry]: "17 4 * * *",
 };
 
 /** A job a module asked the host to run. */
@@ -49,7 +54,7 @@ export async function startJobs(
    * decide whether the mail it sends credits Sentrello or goes out under the
    * business's own name — and a job has no request to read it from.
    */
-  options: { tier?: "free" | "pro" } = {},
+  options: { tier?: "free" | "pro"; modules?: string[] } = {},
 ) {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
@@ -78,6 +83,11 @@ export async function startJobs(
         }),
     },
     { name: QUEUES.licenseRefresh, handler: () => refreshLicenseToken() },
+    {
+      name: QUEUES.telemetry,
+      handler: () =>
+        sendTelemetry({ tier: options.tier, modules: options.modules }),
+    },
     ...moduleJobs,
   ];
 
@@ -96,3 +106,10 @@ export async function startJobs(
 }
 
 export { runRecurringInvoices, sendOverdueReminders, refreshLicenseToken };
+export {
+  sendTelemetry,
+  setTelemetryEnabled,
+  telemetryEnabled,
+  telemetryFixedInEnvironment,
+  band,
+} from "./telemetry";

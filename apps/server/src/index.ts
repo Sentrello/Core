@@ -152,6 +152,9 @@ if (import.meta.main) {
   // or the business's own; a job has no request to read the licence from.
   await startJobs(jobs, {
     tier: state.claims?.tier === "pro" ? "pro" : "free",
+    // Only reaches anywhere if this instance was asked at install time and
+    // said yes; the job checks that itself.
+    modules: loaded,
   });
 }
 

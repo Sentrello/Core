@@ -5,6 +5,11 @@ import {
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
 import {
+  setTelemetryEnabled,
+  telemetryEnabled,
+  telemetryFixedInEnvironment,
+} from "@sentrello/jobs";
+import {
   isValidLicenseKey,
   keyIsFromEnvironment,
   licenseKey,
@@ -98,6 +103,12 @@ export default defineModule({
             configured: configured("RESEND_API_KEY"),
             from: process.env.EMAIL_FROM ?? null,
           },
+          telemetry: {
+            enabled: await telemetryEnabled(),
+            // Fixed on the server: the toggle is shown, and shown as not
+            // yours to change here, rather than silently failing to save.
+            fixedOnServer: telemetryFixedInEnvironment(),
+          },
           payments: {
             stripe: {
               configured: configured("STRIPE_SECRET_KEY"),
@@ -122,6 +133,32 @@ export default defineModule({
     );
 
     /** Renaming the business. It appears on every page a customer sees. */
+    /**
+     * Turning the usage report on or off after installation.
+     *
+     * The question is put once at install time, and this is where somebody
+     * changes their mind — which they must be able to do without editing a
+     * dotfile on their own server, or the opt-in is only nominally a choice.
+     */
+    ctx.app.post(
+      "/api/settings/telemetry",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        if (telemetryFixedInEnvironment()) {
+          return c.json(
+            { error: "This is set on the server and cannot be changed here." },
+            400,
+          );
+        }
+        const body = (await c.req.json().catch(() => ({}))) as {
+          enabled?: unknown;
+        };
+        await setTelemetryEnabled(body.enabled === true);
+        return c.json({ enabled: await telemetryEnabled() });
+      },
+    );
+
     /**
      * What version this is, and whether there is a newer one.
      *
