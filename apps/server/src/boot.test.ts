@@ -196,6 +196,8 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
   // sorted by the order each module registered, not by load order
   expect(body.nav.map((n) => n.id)).toEqual([
     "crm",
+    "companies",
+    "deals",
     "quotes",
     "invoicing",
     "forms",
