@@ -15,6 +15,7 @@ import {
   originAllowed,
   rateLimit,
 } from "@sentrello/module-sdk";
+import { embedScript } from "./loader";
 import { problemPage, thanksPage, wantsHtml } from "./reply";
 
 /** Per-form limit for public submissions. Generous for humans, hostile to bots. */
@@ -133,6 +134,25 @@ export default defineModule({
     // --- public embed endpoints (no session, by design) ---
 
     /** Preflight for cross-site posts. */
+    /**
+     * The embed script itself.
+     *
+     * Public and unauthenticated by necessity — it runs on somebody else's
+     * website, before anybody has filled anything in. It contains no data: the
+     * form it renders is named by the tag that loaded it, and fetched at run
+     * time, so one script serves every form on every instance.
+     */
+    ctx.app.get("/embed.js", (c) =>
+      c.body(embedScript(), 200, {
+        "content-type": "application/javascript; charset=utf-8",
+        // Cached, but briefly. It changes when the product does, and a site
+        // holding a month-old copy would miss a fix to the thing collecting
+        // their leads.
+        "cache-control": "public, max-age=3600",
+        "access-control-allow-origin": "*",
+      }),
+    );
+
     ctx.app.options("/api/embed/forms/:key", async (c) => {
       const form = await formByKey(c.req.param("key"));
       const decision = originAllowed(
@@ -161,6 +181,7 @@ export default defineModule({
           fields: form.fields,
           honeypot: HONEYPOT_FIELD,
           redirectUrl: form.redirectUrl,
+          style: form.style ?? null,
         },
         200,
         corsHeaders(decision.echo),

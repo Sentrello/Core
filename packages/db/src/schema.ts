@@ -473,6 +473,24 @@ export const forms = pgTable(
     key: text("key").notNull().unique(),
     name: text("name").notNull(),
     kind: text("kind").notNull().default("contact"), // contact|quote
+    /**
+     * Which form a submission came from, in one word.
+     *
+     * A business with a contact form on every page cannot tell them apart from
+     * the fields alone — every one collects a name and an email. The tag is
+     * what makes "where did this come from" answerable.
+     */
+    tag: text("tag"),
+    /**
+     * Optional look. Kept small on purpose: a colour and a corner radius cover
+     * matching a site, and anything more is a stylesheet somebody should own
+     * themselves rather than configure in a form builder.
+     */
+    style: jsonb("style").$type<{
+      accent?: string;
+      radius?: string;
+      font?: string;
+    }>(),
     // domains permitted to post; empty means same-origin only
     allowedOrigins: jsonb("allowed_origins")
       .$type<string[]>()

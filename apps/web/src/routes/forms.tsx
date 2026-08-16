@@ -118,15 +118,11 @@ function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
   // Plain HTML: the endpoint accepts a normal form post, so the snippet needs
   // no JavaScript and works on any site, including ones that block scripts.
   // The honeypot is hidden from people and irresistible to bots.
-  const action = `${window.location.origin}/api/embed/forms/${form.key}`;
-  const snippet = `<form method="post" action="${action}">
-  <label>Name <input name="name" required></label>
-  <label>Email <input type="email" name="email" required></label>
-  <label>Message <textarea name="message"></textarea></label>
-  <input type="text" name="_sentrello_hp" tabindex="-1" autocomplete="off"
-         style="position:absolute;left:-9999px" aria-hidden="true">
-  <button type="submit">Send</button>
-</form>`;
+  const base = window.location.origin;
+  // One tag. The previous snippet was a whole <form>, which meant every change
+  // to a field was a change to their website — and every site drifted out of
+  // step with the form it was showing.
+  const snippet = `<script src="${base}/embed.js" data-sentrello-form="${form.key}"></script>`;
 
   const save = useMutation({
     mutationFn: () =>
