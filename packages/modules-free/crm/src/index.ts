@@ -317,6 +317,70 @@ function registerCrmScreens(
   );
 
   /**
+   * One company, and who and what belongs to it.
+   *
+   * The other half of the same idea. A contact's company link is only worth
+   * following if there is something on the other side — the people who work
+   * there and the deals in flight, which is the view a business actually wants
+   * before a meeting.
+   */
+  ctx.app.get(
+    "/api/companies/:id/related",
+    requireSession(),
+    requirePermission({ crm: ["read"] }),
+    async (c) => {
+      const orgId = activeOrganizationId(c.get("session"));
+      const id = c.req.param("id");
+
+      const [company] = await db
+        .select()
+        .from(schema.companies)
+        .where(
+          and(
+            eq(schema.companies.id, id),
+            eq(schema.companies.organizationId, orgId),
+          ),
+        )
+        .limit(1);
+      if (!company) return c.json({ error: "not found" }, 404);
+
+      const [people, deals, notes] = await Promise.all([
+        db
+          .select()
+          .from(schema.contacts)
+          .where(
+            and(
+              eq(schema.contacts.organizationId, orgId),
+              eq(schema.contacts.companyId, id),
+            ),
+          ),
+        db
+          .select()
+          .from(schema.deals)
+          .where(
+            and(
+              eq(schema.deals.organizationId, orgId),
+              eq(schema.deals.companyId, id),
+            ),
+          ),
+        db
+          .select()
+          .from(schema.notes)
+          .where(
+            and(
+              eq(schema.notes.organizationId, orgId),
+              eq(schema.notes.entityType, "company"),
+              eq(schema.notes.entityId, id),
+            ),
+          )
+          .orderBy(desc(schema.notes.createdAt)),
+      ]);
+
+      return c.json({ company, contacts: people, deals, notes });
+    },
+  );
+
+  /**
    * One contact, and everything it connects to.
    *
    * The whole point of the rework: a contact that cannot show its deals, notes

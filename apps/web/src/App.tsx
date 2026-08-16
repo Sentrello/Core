@@ -9,8 +9,10 @@ import {
   useNavigation,
 } from "./lib/navigation";
 import { Bookkeeping } from "./routes/bookkeeping";
+import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
 import { Contacts } from "./routes/contacts";
+import { Deals } from "./routes/deals";
 import { ResetPassword } from "./routes/forgot-password";
 import { Forms } from "./routes/forms";
 import { Invoices } from "./routes/invoices";
@@ -29,6 +31,8 @@ import { SignIn } from "./routes/sign-in";
  */
 const SCREENS: Record<string, () => React.ReactElement | null> = {
   crm: Contacts,
+  companies: Companies,
+  deals: Deals,
   invoicing: Invoices,
   quotes: Quotes,
   bookkeeping: Bookkeeping,
@@ -39,6 +43,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
 /** Screens that show a single record, chosen when navigation names one. */
 const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
   crm: ContactDetail,
+  companies: CompanyDetail,
 };
 
 function useMeta() {

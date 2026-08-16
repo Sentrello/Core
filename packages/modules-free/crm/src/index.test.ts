@@ -387,3 +387,72 @@ test("another organisation's contact is not found", async () => {
   );
   expect(res.status).toBe(404);
 });
+
+test("a deal is created with the fields the caller sent", async () => {
+  // The demo seed hit a 500 here: every column inserted as its default, so the
+  // NOT NULL name failed. Worth pinning the whole body rather than one field.
+  const res = await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Cellar damp works",
+      companyId: null,
+      contactIds: [],
+      stage: "proposal",
+      amountCents: 220_000,
+      category: "Repair",
+      position: 0,
+    }),
+  });
+  expect(res.status).toBe(201);
+  const { deal } = (await res.json()) as {
+    deal: { name: string; stage: string; amountCents: number };
+  };
+  expect(deal.name).toBe("Cellar damp works");
+  expect(deal.stage).toBe("proposal");
+  expect(deal.amountCents).toBe(220_000);
+});
+
+/**
+ * The far side of the link on a contact. A company name that opened a list of
+ * every company would look like a connection and behave like a dead end.
+ */
+test("a company comes back with its people and its deals", async () => {
+  const madeCo = await app.request("http://localhost/api/companies", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Ellesmere Dental", sector: "Healthcare" }),
+  });
+  const { company } = (await madeCo.json()) as { company: { id: string } };
+
+  await app.request("http://localhost/api/contacts", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      firstName: "Sunniva",
+      lastName: "Restrepo",
+      companyId: company.id,
+    }),
+  });
+  await app.request("http://localhost/api/deals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      name: "Surgery 3 fit-out",
+      companyId: company.id,
+      amountCents: 1_150_000,
+    }),
+  });
+
+  const res = await app.request(
+    `http://localhost/api/companies/${company.id}/related`,
+    { headers },
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    contacts: { name: string }[];
+    deals: { name: string }[];
+  };
+  expect(body.contacts.map((p) => p.name)).toEqual(["Sunniva Restrepo"]);
+  expect(body.deals.map((d) => d.name)).toEqual(["Surgery 3 fit-out"]);
+});
