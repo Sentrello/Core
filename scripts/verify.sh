@@ -31,10 +31,24 @@ step() {
   fi
 }
 
-# Formatting is applied rather than only reported — then checked below, so
-# anything it could not fix still fails instead of being carried silently.
+# Formatting is applied, and then the tree is compared against what it was.
+#
+# Applying and carrying on looks helpful and is a trap: the gate passes, the
+# fix is never staged, and whatever is committed or tagged next is the version
+# that was never checked. That is exactly how a v0.3.0 tag ended up pointing at
+# a package.json its own CI rejects — verify ran, wrote the fix, said ready,
+# and the fix stayed in the working tree.
+#
+# So a write is now a failure. Noisy, but the alternative is silent and wrong.
 if [ -x ./node_modules/.bin/biome ]; then
+  before="$(git status --porcelain 2>/dev/null)"
   ./node_modules/.bin/biome check --write . >/dev/null 2>&1 || true
+  after="$(git status --porcelain 2>/dev/null)"
+  if [ "$before" != "$after" ]; then
+    printf '  %-12s %s\n' "formatting" "APPLIED — review and stage it, then run again"
+    git status --porcelain | sed 's/^/      /'
+    failed=1
+  fi
 fi
 
 step "typecheck" ./node_modules/.bin/tsc -b --force
