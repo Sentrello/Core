@@ -29,6 +29,26 @@ export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/mod-documents",
 ];
 
+/**
+ * Whether a failed import means "this instance did not buy it".
+ *
+ * Absent is the overwhelmingly common case and says nothing worth logging. A
+ * bundle that is present and throws is the opposite: a customer losing every
+ * feature they paid for. The two used to look identical here, and Pro was
+ * silently missing from our own instance for it — it could not resolve
+ * `@sentrello/email`, and the healthz that exists to report exactly that said
+ * nothing at all.
+ *
+ * They are told apart by which module could not be found: this one, or
+ * something this one needed.
+ */
+export function isNotInstalled(name: string, message: string): boolean {
+  return (
+    message.includes(`Cannot find module '${name}'`) ||
+    message.includes(`Cannot find package '${name}'`)
+  );
+}
+
 function isModule(value: unknown): value is SentrelloModule {
   return (
     typeof value === "object" &&
@@ -100,9 +120,17 @@ export async function discoverOptionalModules(
       const mod: unknown = await import(name);
       const candidate = (mod as { default?: unknown }).default;
       if (isModule(candidate)) found.push(candidate);
-      else console.warn(`[modules] ${name} has no valid default export`);
-    } catch {
-      // not installed on this instance — the overwhelmingly common case
+      else {
+        const reason = "it has no valid default export";
+        failedBundles.push({ name, reason });
+        console.error(`[modules] ${name} did not load: ${reason}`);
+      }
+    } catch (err) {
+      const message = (err as Error).message ?? "";
+      if (!isNotInstalled(name, message)) {
+        failedBundles.push({ name, reason: message });
+        console.error(`[modules] ${name} did not load: ${message}`);
+      }
     }
   }
 
