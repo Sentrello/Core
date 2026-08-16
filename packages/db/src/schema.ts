@@ -596,3 +596,34 @@ export const userPreferences = pgTable(
     ),
   ],
 );
+
+/**
+ * Which optional modules a business has actually turned on.
+ *
+ * Owning a module and using it are different things. Somebody buys Pro with
+ * four modules on a Friday and sets up two of them; the other two are theirs,
+ * paid for, and should be waiting quietly rather than filling the sidebar with
+ * screens nobody has configured. Sentrello's own instance is the first example
+ * of it — every module entitled, most not in use yet.
+ *
+ * A row means a decision was made. No row means nobody has been asked, which
+ * for a module the licence has just started granting is the honest state: it
+ * appears under Modules with a way to start, and nowhere else.
+ */
+export const moduleState = pgTable(
+  "module_state",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    /** The module id the loader knows it by — the same string the licence grants. */
+    moduleId: text("module_id").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    /** When it was first turned on, which is a thing support gets asked. */
+    enabledAt: timestamp("enabled_at"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("module_state_org_idx").on(t.organizationId),
+    uniqueIndex("module_state_unique_idx").on(t.organizationId, t.moduleId),
+  ],
+);

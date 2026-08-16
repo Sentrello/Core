@@ -24,6 +24,10 @@ export function loadModules(
   // Kept apart from `nav` deliberately: a predicate cannot be serialised, and
   // the nav array is handed to the browser as it stands.
   const navVisibility = new Map<string, (s: SentrelloSession) => boolean>();
+  // Which module each nav entry belongs to, and what tier that module is.
+  // Optional modules are the only ones a business turns on and off — the Free
+  // ones are the product, not a purchase.
+  const tiers = new Map<string, SentrelloModule["tier"]>();
   const permissions: string[] = [];
   const jobs: ModuleJob[] = [];
   const loaded = new Set<string>();
@@ -51,10 +55,11 @@ export function loadModules(
         // namespaced: two modules may both want a job called "reminders"
         registerJob: (j) => jobs.push({ ...j, name: `${m.id}:${j.name}` }),
       });
+      tiers.set(m.id, m.tier);
       loaded.add(m.id);
       progress = true;
     }
   }
   nav.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  return { nav, navVisibility, permissions, jobs, loaded: [...loaded] };
+  return { nav, navVisibility, tiers, permissions, jobs, loaded: [...loaded] };
 }

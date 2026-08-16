@@ -11,7 +11,8 @@
     "./ssl": "./src/ssl.ts",
     "./module-migrations": "./src/module-migrations.ts",
     "./portal": "./src/portal.ts",
-    "./documents": "./src/documents.ts"
+    "./documents": "./src/documents.ts",
+    "./modules": "./src/modules.ts"
   },
   "scripts": {
     "migrate": "bun run src/migrate.ts"

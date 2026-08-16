@@ -40,6 +40,13 @@ export type Meta = {
   /** `moduleId` is which module registered the entry, and owns its screens. */
   nav: { id: string; label: string; order?: number; moduleId: string }[];
   loaded: string[];
+  /**
+   * Every optional module this licence allows, and whether it is set up.
+   *
+   * One that is not set up appears nowhere else: it is deliberately absent
+   * from the sidebar until somebody turns it on.
+   */
+  modules: { id: string; label: string; enabled: boolean }[];
   /** module ids that shipped screens this instance may serve */
   ui: string[];
 };

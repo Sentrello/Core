@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
+import { isEnabled } from "@sentrello/db/modules";
 import { eq } from "@sentrello/db/orm";
 import { type SentrelloEnv, defineModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
@@ -321,4 +322,43 @@ test("a business route is 401 without a session", async () => {
   const res = await server.fetch(new Request("http://localhost/api/contacts"));
   expect(res.status).toBe(401);
   expect(await res.json()).toEqual({ error: "unauthorized" });
+});
+
+/**
+ * Owning a module and using it are different things.
+ *
+ * A business that buys Pro with four modules on a Friday should not find four
+ * half-configured screens in its sidebar on Monday. The licence decides what
+ * may run; this decides what has been set up, and until somebody says so the
+ * answer is "not yet" rather than "no".
+ */
+test("an optional module stays out of the nav until it is turned on", async () => {
+  const boughtScheduling = (need: { tier?: "pro"; module?: string }) =>
+    need.module === "scheduling";
+
+  const { nav, tiers } = loadModules(
+    new Hono<SentrelloEnv>(),
+    boughtScheduling,
+    [mod("crm", "free"), mod("scheduling", "module")],
+  );
+
+  // The loader still loads it — its routes and jobs are real, and the licence
+  // is what decides that. Only the way in is withheld.
+  expect(nav.map((n) => n.id)).toContain("scheduling");
+  expect(tiers.get("scheduling")).toBe("module");
+  expect(tiers.get("crm")).toBe("free");
+
+  const states = new Map([
+    ["scheduling", { moduleId: "scheduling", enabled: false, enabledAt: null }],
+  ]);
+  const shown = nav.filter((item) =>
+    tiers.get(item.moduleId) === "module"
+      ? isEnabled(states, item.moduleId)
+      : true,
+  );
+  expect(shown.map((n) => n.id)).toEqual(["crm"]);
+
+  // A Free module is the product, not a purchase: nothing can hide it.
+  expect(isEnabled(new Map(), "crm")).toBe(false);
+  expect(shown.some((n) => n.id === "crm")).toBe(true);
 });

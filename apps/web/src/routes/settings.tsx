@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api } from "../lib/api";
+import { type Meta, api } from "../lib/api";
 import {
   Button,
   Card,
@@ -598,6 +598,8 @@ export function Settings() {
         ) : null}
       </Card>
 
+      <Modules />
+
       <Telemetry telemetry={data.telemetry} />
 
       <Card>
@@ -670,6 +672,103 @@ function Telemetry({
           </Button>
         )}
       </div>
+      {toggle.error ? <ErrorNote error={toggle.error} /> : null}
+    </Card>
+  );
+}
+
+/**
+ * What this licence includes, and what has actually been set up.
+ *
+ * Owning a module and using it are different things. Somebody buys Pro with
+ * four modules and configures two; the other two are theirs, paid for, and
+ * belong here waiting rather than in the sidebar as screens nobody has filled
+ * in. Turning one off later hides it and deletes nothing — a diary switched
+ * off in the winter is still there in the spring.
+ */
+function Modules() {
+  const qc = useQueryClient();
+  const meta = useQuery({
+    queryKey: ["meta"],
+    queryFn: () => api<Meta>("/api/_meta"),
+  });
+
+  const toggle = useMutation({
+    mutationFn: (input: { id: string; enabled: boolean }) =>
+      api(`/api/modules/${input.id}`, {
+        method: "POST",
+        body: JSON.stringify({ enabled: input.enabled }),
+      }),
+    // Everything: the sidebar is built from the same call.
+    onSuccess: () => qc.invalidateQueries(),
+  });
+
+  if (meta.isLoading) return null;
+
+  // The server says which modules are optional and how each stands. The
+  // browser working that out from the nav would get it wrong the first time a
+  // Free module was renamed.
+  const modules = meta.data?.modules ?? [];
+  if (modules.length === 0) return null;
+
+  const available = modules.filter((m) => !m.enabled);
+  const switchable = modules.filter((m) => m.enabled);
+
+  return (
+    <Card>
+      <p className="font-medium">Modules</p>
+      <p className="mt-1 text-sm" style={muted}>
+        What your licence includes. Set one up when you are ready for it —
+        nothing is lost by leaving it until then.
+      </p>
+
+      <ul className="mt-3 space-y-2">
+        {available.map((m) => (
+          <li
+            key={m.id}
+            className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div>
+              <div>{m.label}</div>
+              <div className="text-xs" style={muted}>
+                Included, not set up yet
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ id: m.id, enabled: true })}
+            >
+              Set up
+            </Button>
+          </li>
+        ))}
+
+        {switchable.map((n) => (
+          <li
+            key={n.id}
+            className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"
+            style={{ borderColor: "var(--border)" }}
+          >
+            <div>
+              <div>{n.label}</div>
+              <div className="text-xs" style={muted}>
+                In use
+              </div>
+            </div>
+            <button
+              type="button"
+              className="text-xs underline"
+              style={muted}
+              disabled={toggle.isPending}
+              onClick={() => toggle.mutate({ id: n.id, enabled: false })}
+            >
+              Put away
+            </button>
+          </li>
+        ))}
+      </ul>
       {toggle.error ? <ErrorNote error={toggle.error} /> : null}
     </Card>
   );

@@ -1,10 +1,16 @@
 import { registerBootstrapRoutes } from "@sentrello/auth/bootstrap";
 import {
+  activeOrganizationId,
   mountAuth,
   requirePermission,
   requireSession,
 } from "@sentrello/auth/hono";
 import { runModuleMigrations } from "@sentrello/db/module-migrations";
+import {
+  isEnabled,
+  moduleStates,
+  setModuleEnabled,
+} from "@sentrello/db/modules";
 import { mailConfigured } from "@sentrello/email";
 import { startJobs } from "@sentrello/jobs";
 import bookkeeping from "@sentrello/module-bookkeeping";
@@ -40,7 +46,11 @@ const modules: SentrelloModule[] = [
   profile,
   ...(await discoverOptionalModules()),
 ];
-const { nav, navVisibility, loaded, jobs } = loadModules(app, gate, modules);
+const { nav, navVisibility, tiers, loaded, jobs } = loadModules(
+  app,
+  gate,
+  modules,
+);
 
 // A module brings its own tables. Applying them here — after the licence has
 // decided what loads — means a customer who buys a module gets its schema on the
@@ -101,14 +111,77 @@ const uiModules = serveModuleUi(app, modules, loaded);
  * rather than hidden in the browser, so an entry somebody is not offered is
  * genuinely absent from what they are sent.
  */
-app.get("/api/_meta", requireSession(), (c) => {
+app.get("/api/_meta", requireSession(), async (c) => {
   const session = c.get("session");
+  // Read directly rather than through `activeOrganizationId`, which throws by
+  // design so a business query can never lose its org filter. This is not a
+  // business query: somebody signed in but not yet a member of anything still
+  // needs a shell to look at, and they simply have no modules set up.
+  const orgId = session.session.activeOrganizationId;
+  const states = orgId ? await moduleStates(orgId) : new Map();
+
   const visible = nav.filter((item) => {
     const allowed = navVisibility.get(item.id);
-    return allowed ? allowed(session) : true;
+    if (allowed && !allowed(session)) return false;
+    // A module the licence grants but nobody has set up belongs under Modules
+    // with a way to start, not in the sidebar as a screen that half works.
+    if (tiers.get(item.moduleId) !== "module") return true;
+    return isEnabled(states, item.moduleId);
   });
-  return c.json({ nav: visible, loaded, ui: uiModules, version: VERSION });
+
+  return c.json({
+    nav: visible,
+    loaded,
+    /**
+     * Every optional module this licence allows, and whether it is set up.
+     *
+     * The Modules screen is built from this. It carries the state rather than
+     * only the unused ones, so the screen never has to work out which of the
+     * loaded modules are optional — a guess the browser would get wrong the
+     * first time a Free module was renamed.
+     */
+    modules: loaded
+      .filter((id) => tiers.get(id) === "module")
+      .map((id) => ({
+        id,
+        label: nav.find((n) => n.moduleId === id)?.label ?? id,
+        enabled: isEnabled(states, id),
+      })),
+    ui: uiModules,
+    version: VERSION,
+  });
 });
+
+/**
+ * Turning an optional module on, or putting it away again.
+ *
+ * Turning one off hides it and stops it being offered; it never deletes
+ * anything. A business that switches scheduling off in the winter and back on
+ * in the spring should find its diary where it left it.
+ */
+app.post(
+  "/api/modules/:id",
+  requireSession(),
+  requirePermission({ settings: ["update"] }),
+  async (c) => {
+    const id = c.req.param("id");
+    if (tiers.get(id) !== "module") {
+      // Free modules are the product, not a purchase. A business that could
+      // turn off invoicing would be one support call from an instance that
+      // cannot invoice.
+      return c.json({ error: "that module is not optional" }, 400);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      enabled?: unknown;
+    };
+    await setModuleEnabled(
+      activeOrganizationId(c.get("session")),
+      id,
+      body.enabled === true,
+    );
+    return c.json({ id, enabled: body.enabled === true });
+  },
+);
 
 /**
  * What the sign-in page needs before anyone has signed in.
