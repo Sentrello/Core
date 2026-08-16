@@ -12,6 +12,7 @@
     "drizzle-orm": "^0.45.0",
     "hono": "^4.6.0",
     "@sentrello/licensing-client": "*",
-    "@sentrello/jobs": "*"
+    "@sentrello/jobs": "*",
+    "@sentrello/email": "*"
   }
 }

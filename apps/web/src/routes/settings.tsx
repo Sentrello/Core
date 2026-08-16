@@ -290,7 +290,7 @@ export function Settings() {
         <p className="mt-1 text-sm" style={muted}>
           {data.email.configured
             ? `Sent from ${data.email.from ?? "the configured address"}.`
-            : "Invoices, receipts and reminders will not be delivered until an email provider is configured on the server."}
+            : "Invoices, receipts and password resets cannot be delivered until an email provider is configured on the server. Overdue invoices are not chased either — they are left alone rather than marked as chased, so nothing is lost by setting this up later."}
         </p>
       </Card>
 

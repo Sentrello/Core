@@ -1,7 +1,7 @@
 import { db, schema } from "@sentrello/db";
 import { invoiceStatus } from "@sentrello/db/money";
 import { businessIdentity } from "@sentrello/db/portal";
-import { emailAdapter } from "@sentrello/email";
+import { emailAdapter, mailConfigured } from "@sentrello/email";
 import { overdueReminderEmail } from "@sentrello/email/templates";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { isOverdue } from "./dates";
@@ -23,6 +23,27 @@ export async function sendOverdueReminders(
         isNotNull(schema.invoices.dueDate),
       ),
     );
+
+  /**
+   * With no mail configured, chase nobody and mark nothing.
+   *
+   * The no-op adapter logs and returns rather than throwing, so this loop used
+   * to "send" every overdue reminder into the void and then stamp each invoice
+   * as chased. The throttle then held those invoices for days. A business that
+   * had not set up mail — which the install treats as optional — believed its
+   * customers were being reminded, the customers heard nothing, and configuring
+   * mail later would not have chased them either, because they were all marked
+   * as done.
+   */
+  if (!mailConfigured()) {
+    const waiting = candidates.length;
+    if (waiting > 0) {
+      console.warn(
+        `[overdue] ${waiting} invoice(s) may be overdue and no mail is configured, so nobody was chased`,
+      );
+    }
+    return { sent: 0, skipped: waiting, reason: "no mail configured" as const };
+  }
 
   const mailer = emailAdapter();
   let sent = 0;
@@ -72,5 +93,5 @@ export async function sendOverdueReminders(
     sent++;
   }
 
-  return { sent };
+  return { sent, skipped: 0 };
 }

@@ -4,6 +4,7 @@ import {
   requireSession,
 } from "@sentrello/auth/hono";
 import { db, schema } from "@sentrello/db";
+import { mailConfigured } from "@sentrello/email";
 import {
   setTelemetryEnabled,
   telemetryEnabled,
@@ -105,7 +106,10 @@ export default defineModule({
             baseUrlMatchesRequest: base === new URL(c.req.url).origin,
           },
           email: {
-            configured: configured("RESEND_API_KEY"),
+            // Both, because an instance sending through its own SMTP server
+            // was being told mail was not set up — and the overdue chase,
+            // password resets and every invoice email depend on this answer.
+            configured: mailConfigured(),
             from: process.env.EMAIL_FROM ?? null,
           },
           telemetry: {
