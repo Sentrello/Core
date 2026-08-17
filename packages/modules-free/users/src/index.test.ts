@@ -78,6 +78,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db
+    .delete(schema.securityEvents)
+    .where(eq(schema.securityEvents.organizationId, orgId));
   await db.delete(schema.twoFactor).where(eq(schema.twoFactor.userId, mateId));
   await db.delete(schema.session).where(eq(schema.session.userId, mateId));
   await db.delete(schema.member).where(eq(schema.member.organizationId, orgId));
@@ -240,6 +243,48 @@ test("nothing touches somebody who is not a member of this business", async () =
   }
 
   await db.delete(schema.user).where(eq(schema.user.id, strangerId));
+});
+
+test("every action that hands access around is written down", async () => {
+  const before = (await get()).history?.length ?? 0;
+
+  await app.request(`http://localhost/api/users/${mateId}/sessions/revoke`, {
+    method: "POST",
+    headers,
+  });
+  await app.request(`http://localhost/api/users/${mateId}/role`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ role: "staff" }),
+  });
+
+  const history = (await get()).history ?? [];
+  expect(history.length).toBeGreaterThan(before);
+
+  const roleChange = history.find((h) => h.says.includes("role"));
+  expect(roleChange?.actor).toBe("Jo Whitcombe");
+  expect(roleChange?.subject).toBe("Sam Okafor");
+  // The old and new role, because "changed their role" without saying what to
+  // answers half the question somebody is asking.
+  expect(roleChange?.detail).toMatchObject({ to: "staff" });
+
+  // The password itself is never in it. What is recorded is that it happened —
+  // checked against the actual issued password rather than a guess at its
+  // shape, since the first version of this assertion tripped over the hyphens
+  // in a timestamp and proved nothing.
+  const issued = (await (
+    await app.request(`http://localhost/api/users/${mateId}/password`, {
+      method: "POST",
+      headers,
+    })
+  ).json()) as { password: string };
+
+  const after = JSON.stringify((await get()).history ?? []);
+  expect(after).toContain("issued a new password for");
+  expect(after).not.toContain(issued.password);
+  for (const word of issued.password.split("-")) {
+    expect(after).not.toContain(word);
+  }
 });
 
 test("a temporary password is readable aloud and not guessable", () => {

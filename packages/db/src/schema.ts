@@ -627,3 +627,38 @@ export const moduleState = pgTable(
     uniqueIndex("module_state_unique_idx").on(t.organizationId, t.moduleId),
   ],
 );
+
+/**
+ * Who did what to whose account.
+ *
+ * Resetting somebody's password, revoking their two-factor, changing what
+ * they may do, removing them: each of these hands access around, and without
+ * a record the only answer to "who did this and when" is nobody's memory.
+ * A business with three staff can shrug at that. One with fifteen, or one
+ * being asked by an insurer, cannot.
+ *
+ * Deliberately append-only from the application's side — nothing here offers
+ * a way to edit or delete a row, because a log somebody can quietly tidy is
+ * not evidence of anything.
+ */
+export const securityEvents = pgTable(
+  "security_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    /** The person who did it. Kept as an id and a name: the id may be removed later. */
+    actorId: text("actor_id").notNull(),
+    actorName: text("actor_name").notNull(),
+    /** The account it was done to, where there is one. */
+    subjectId: text("subject_id"),
+    subjectName: text("subject_name"),
+    action: text("action").notNull(),
+    /** Anything worth knowing that is not a person — an old and new role. */
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    at: timestamp("at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("security_events_org_idx").on(t.organizationId),
+    index("security_events_at_idx").on(t.at),
+  ],
+);

@@ -105,6 +105,14 @@ interface Invitation {
   expiresAt: string;
 }
 
+interface Change {
+  at: string;
+  actor: string;
+  subject: string | null;
+  says: string;
+  detail: Record<string, unknown> | null;
+}
+
 /**
  * The people, and everything an administrator has to be able to do to them.
  *
@@ -124,7 +132,11 @@ function People({ custom }: { custom: OrgRole[] }) {
   const data = useQuery({
     queryKey: ["users"],
     queryFn: () =>
-      api<{ people: Person[]; invitations: Invitation[] }>("/api/users"),
+      api<{
+        people: Person[];
+        invitations: Invitation[];
+        history: Change[];
+      }>("/api/users"),
   });
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["users"] });
@@ -346,6 +358,31 @@ function People({ custom }: { custom: OrgRole[] }) {
           </Row>
         ))}
       </Table>
+
+      {(data.data?.history ?? []).length > 0 ? (
+        <Card>
+          <p className="font-medium">Recent changes</p>
+          <p className="mt-1 text-xs" style={muted}>
+            Everything on this screen hands access around, so it is written
+            down. Nothing here can be edited or deleted.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {(data.data?.history ?? []).map((change) => (
+              <li key={`${change.at}-${change.says}-${change.subject ?? ""}`}>
+                <span style={muted}>{formatDate(change.at)}</span>{" "}
+                <strong>{change.actor}</strong> {change.says}{" "}
+                <strong>{change.subject ?? "—"}</strong>
+                {change.detail && "from" in change.detail ? (
+                  <span style={muted}>
+                    {" "}
+                    ({String(change.detail.from)} → {String(change.detail.to)})
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       {[setRole, remove, resetPassword, revokeTwoFactor, signOut].map((m, i) =>
         m.error ? <ErrorNote key={String(i)} error={m.error} /> : null,

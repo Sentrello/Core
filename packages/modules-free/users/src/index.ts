@@ -8,6 +8,7 @@ import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { temporaryPassword } from "./password";
+import { ACTION_TEXT, recent, record } from "./record";
 
 /**
  * Who is on this instance, and what each of them may do.
@@ -36,6 +37,20 @@ interface Person {
   lastSeenAt: Date | null;
   /** Whether this is the person doing the looking. */
   you: boolean;
+}
+
+/** The person an action is about, for the record. */
+async function subjectOf(userId: string) {
+  const [user] = await db
+    .select({
+      id: schema.user.id,
+      name: schema.user.name,
+      email: schema.user.email,
+    })
+    .from(schema.user)
+    .where(eq(schema.user.id, userId))
+    .limit(1);
+  return user ?? { id: userId, name: null, email: null };
 }
 
 export default defineModule({
@@ -142,7 +157,20 @@ export default defineModule({
             ),
           );
 
-        return c.json({ people, invitations });
+        return c.json({
+          people,
+          invitations,
+          // Who did what, so "when did that happen and who did it" has an
+          // answer that is not somebody's memory.
+          history: (await recent(orgId)).map((e) => ({
+            at: e.at,
+            actor: e.actorName,
+            subject: e.subjectName,
+            action: e.action,
+            says: ACTION_TEXT[e.action as keyof typeof ACTION_TEXT] ?? e.action,
+            detail: e.detail,
+          })),
+        });
       },
     );
 
@@ -184,9 +212,23 @@ export default defineModule({
         // Through Better Auth rather than by writing the row: it is the thing
         // that decides whether a role may be granted at all, and a direct
         // update would sidestep that quietly.
+        const [before] = await db
+          .select({ role: schema.member.role })
+          .from(schema.member)
+          .where(eq(schema.member.id, member.id))
+          .limit(1);
+
         await auth.api.updateMemberRole({
           body: { memberId: member.id, role, organizationId: orgId },
           headers: c.req.raw.headers,
+        });
+
+        await record({
+          organizationId: orgId,
+          actor: session.user,
+          subject: await subjectOf(userId),
+          action: "role.changed",
+          detail: { from: before?.role ?? null, to: role },
         });
         return c.json({ ok: true });
       },
@@ -286,9 +328,17 @@ export default defineModule({
           .delete(schema.session)
           .where(eq(schema.session.userId, userId));
 
+        await record({
+          organizationId: orgId,
+          actor: session.user,
+          subject: await subjectOf(userId),
+          action: "password.reset",
+        });
+
         // Returned once and never stored. The administrator reads it out and
         // the person changes it; anything else means a password sitting in a
-        // database column waiting to be found.
+        // database column waiting to be found. The log records that it
+        // happened, never what it was.
         return c.json({ password });
       },
     );
@@ -364,6 +414,14 @@ export default defineModule({
           .delete(schema.session)
           .where(eq(schema.session.userId, userId))
           .returning({ id: schema.session.id });
+
+        await record({
+          organizationId: orgId,
+          actor: c.get("session").user,
+          subject: await subjectOf(userId),
+          action: "sessions.revoked",
+          detail: { sessions: gone.length },
+        });
         return c.json({ signedOut: gone.length });
       },
     );
