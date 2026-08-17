@@ -10,7 +10,7 @@ else's infrastructure.
 [![PostgreSQL 17](https://img.shields.io/badge/postgres-17-336791)](https://www.postgresql.org/)
 [![Status: early](https://img.shields.io/badge/status-early%20access-orange)](#project-status)
 
-![Contacts, invoices and the ledger in one place](docs/images/contacts.jpg)
+![Contacts, invoices and the ledger in one place](docs/images/contacts.png)
 
 ---
 
@@ -48,18 +48,18 @@ Everything below is one install, running on one server, with one login.
 **Invoicing** — raise an invoice and it posts to the ledger as you issue it.
 Part payments are normal: the balance stays open and the books stay right.
 
-![Invoices with status and totals](docs/images/invoices.jpg)
+![Invoices with status and totals](docs/images/invoices.png)
 
 **Bookkeeping** — real double-entry underneath, read back as plain numbers.
 Every figure here is derived from journal entries, not from a spreadsheet
 column someone can overwrite.
 
-![Income, expenses and net, read from the ledger](docs/images/bookkeeping.jpg)
+![Income, expenses and net, read from the ledger](docs/images/bookkeeping.png)
 
 **Deals** — the pipeline as a board, with what each stage is worth. Free, and
 part of the CRM.
 
-![Deals as a five-column board](docs/images/deals.jpg)
+![Deals as a five-column board](docs/images/deals.png)
 
 ### With Pro and the optional modules
 
@@ -67,7 +67,7 @@ part of the CRM.
 to the post office and a form that demands a project first is a form nobody
 uses.
 
-![A week of tracked time with billable totals](docs/images/time-tracking.jpg)
+![A week of tracked time with billable totals](docs/images/time-tracking.png)
 
 ---
 
