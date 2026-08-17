@@ -261,6 +261,18 @@ test("every action that hands access around is written down", async () => {
   const history = (await get()).history ?? [];
   expect(history.length).toBeGreaterThan(before);
 
+  // Every action, not a sample. Two of these silently recorded nothing for a
+  // while because the formatter had rewrapped the lines an edit was matching
+  // on, and only a walk through the real screen noticed.
+  await app.request(`http://localhost/api/users/${mateId}/two-factor/revoke`, {
+    method: "POST",
+    headers,
+  });
+  const kinds = new Set(((await get()).history ?? []).map((h) => h.says));
+  expect(kinds).toContain("turned off two-factor for");
+  expect(kinds).toContain("signed out every device of");
+  expect(kinds).toContain("changed the role of");
+
   const roleChange = history.find((h) => h.says.includes("role"));
   expect(roleChange?.actor).toBe("Jo Whitcombe");
   expect(roleChange?.subject).toBe("Sam Okafor");

@@ -282,10 +282,19 @@ export default defineModule({
           );
         }
 
+        const subject = await subjectOf(userId);
         await db.delete(schema.member).where(eq(schema.member.id, mine.id));
         await db
           .delete(schema.session)
           .where(eq(schema.session.userId, userId));
+
+        await record({
+          organizationId: orgId,
+          actor: session.user,
+          subject,
+          action: "member.removed",
+          detail: { role: mine.role },
+        });
         return c.json({ removed: true });
       },
     );
@@ -386,6 +395,12 @@ export default defineModule({
           .delete(schema.session)
           .where(eq(schema.session.userId, userId));
 
+        await record({
+          organizationId: orgId,
+          actor: session.user,
+          subject: await subjectOf(userId),
+          action: "two-factor.revoked",
+        });
         return c.json({ revoked: true });
       },
     );
