@@ -13,7 +13,7 @@ import { Button, Card, ErrorNote, Row, Select, Table, muted } from "../lib/ui";
  * because correcting a wrong guess is faster than making ten right ones.
  */
 
-const FIELDS = [
+export const FIELDS = [
   {
     key: "firstName",
     label: "First name",

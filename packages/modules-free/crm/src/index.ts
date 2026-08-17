@@ -250,6 +250,26 @@ const tables = {
  * addressed to an empty string because somebody edited a surname is not a
  * failure anyone would connect back to the CRM.
  */
+/**
+ * The columns an exported contacts file carries.
+ *
+ * Named rather than written inline because the import screen has to recognise
+ * them: export, edit in a spreadsheet, import back is the loop people actually
+ * use, and the two lists live in different packages with nothing but a test
+ * between them.
+ */
+export const EXPORT_COLUMNS = [
+  "First name",
+  "Last name",
+  "Job title",
+  "Company",
+  "Email",
+  "Phone",
+  "Other emails",
+  "Other phones",
+  "LinkedIn",
+] as const;
+
 export function displayName(body: Record<string, unknown>): string | undefined {
   const first = typeof body.firstName === "string" ? body.firstName.trim() : "";
   const last = typeof body.lastName === "string" ? body.lastName.trim() : "";
@@ -387,17 +407,7 @@ function registerCrmScreens(
       const companyName = new Map(allCompanies.map((co) => [co.id, co.name]));
 
       const csv = toCsv(
-        [
-          "First name",
-          "Last name",
-          "Job title",
-          "Company",
-          "Email",
-          "Phone",
-          "Other emails",
-          "Other phones",
-          "LinkedIn",
-        ],
+        [...EXPORT_COLUMNS],
         rows.map((r) => [
           r.firstName ?? "",
           r.lastName ?? "",
