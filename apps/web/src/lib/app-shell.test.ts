@@ -1,33 +1,14 @@
 import { expect, test } from "bun:test";
+import { type NavEntry, sections } from "./app-shell";
 
 /**
- * Sidebar sections. Mirrors `sections()` in app-shell.tsx — the grouping rules
- * are the thing worth checking, not the markup around them.
+ * Sidebar sections — the real function, not a copy of it.
+ *
+ * This file used to restate the sorting rules rather than import them, and
+ * the copy stayed green while the sidebar put the Dashboard underneath every
+ * other section. A test that mirrors the code proves only that somebody wrote
+ * the same thing twice.
  */
-interface N {
-  id: string;
-  label: string;
-  group?: string;
-}
-const GROUP_ORDER = ["Sales", "Money", "Work", "People", "Configure"];
-
-function sections(nav: N[]) {
-  const byGroup = new Map<string, N[]>();
-  for (const item of nav) {
-    const key = item.group ?? "";
-    const list = byGroup.get(key);
-    if (list) list.push(item);
-    else byGroup.set(key, [item]);
-  }
-  return [...byGroup.entries()]
-    .map(([name, items]) => ({ name, items }))
-    .sort((a, b) => {
-      const ai = GROUP_ORDER.indexOf(a.name);
-      const bi = GROUP_ORDER.indexOf(b.name);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-}
-
 test("sections follow the order work happens in, not the alphabet", () => {
   const out = sections([
     { id: "settings", label: "Settings", group: "Configure" },
@@ -76,4 +57,36 @@ test("an entry with no section is still reachable", () => {
   const out = sections([{ id: "loose", label: "Loose" }]);
   expect(out[0]?.name).toBe("");
   expect(out[0]?.items).toHaveLength(1);
+});
+
+/**
+ * The first screen anybody sees, in the first place they look.
+ *
+ * The Dashboard belongs to no section, and "no section" sorted with "a
+ * section nobody recognises" — so it landed at the bottom of the sidebar,
+ * under Configure.
+ */
+test("an entry with no section sits above the sections", () => {
+  const out = sections([
+    {
+      id: "settings",
+      label: "Settings",
+      group: "Configure",
+      moduleId: "settings",
+    },
+    { id: "crm", label: "Contacts", group: "Sales", moduleId: "crm" },
+    { id: "dashboard", label: "Dashboard", group: "", moduleId: "dashboard" },
+  ]);
+  expect(out[0]?.name).toBe("");
+  expect(out[0]?.items.map((i) => i.label)).toEqual(["Dashboard"]);
+  expect(out.map((s) => s.name)).toEqual(["", "Sales", "Configure"]);
+});
+
+test("an unrecognised section still goes last, below the known ones", () => {
+  const out = sections([
+    { id: "x", label: "Something New", group: "Logistics", moduleId: "x" },
+    { id: "dashboard", label: "Dashboard", moduleId: "dashboard" },
+    { id: "crm", label: "Contacts", group: "Sales", moduleId: "crm" },
+  ]);
+  expect(out.map((s) => s.name)).toEqual(["", "Sales", "Logistics"]);
 });

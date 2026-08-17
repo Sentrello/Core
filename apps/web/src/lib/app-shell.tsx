@@ -13,7 +13,7 @@ import { type Theme, useTheme } from "./theme";
  * whatever it is related to, which is where that relationship has to be shown.
  */
 
-interface NavEntry {
+export interface NavEntry {
   id: string;
   label: string;
   moduleId?: string;
@@ -28,7 +28,9 @@ interface NavEntry {
  */
 const GROUP_ORDER = ["Sales", "Money", "Work", "People", "Configure"];
 
-function sections(nav: NavEntry[]): { name: string; items: NavEntry[] }[] {
+export function sections(
+  nav: NavEntry[],
+): { name: string; items: NavEntry[] }[] {
   const byGroup = new Map<string, NavEntry[]>();
   for (const item of nav) {
     const key = item.group ?? "";
@@ -36,13 +38,27 @@ function sections(nav: NavEntry[]): { name: string; items: NavEntry[] }[] {
     if (list) list.push(item);
     else byGroup.set(key, [item]);
   }
+  /**
+   * Where a section sits.
+   *
+   * An entry with no section is a top-level one — the Dashboard is the only
+   * one today — and it belongs above the sections rather than below them. It
+   * used to share its position with "a section nobody recognises", so the
+   * first thing anybody sees on signing in was the last thing in the sidebar.
+   *
+   * A named section the host has never heard of still sorts to the end: a
+   * module may invent one, and putting it last is better than guessing where
+   * in somebody's working day it belongs.
+   */
+  const position = (name: string) => {
+    if (name === "") return -1;
+    const known = GROUP_ORDER.indexOf(name);
+    return known === -1 ? 99 : known;
+  };
+
   return [...byGroup.entries()]
     .map(([name, items]) => ({ name, items }))
-    .sort((a, b) => {
-      const ai = GROUP_ORDER.indexOf(a.name);
-      const bi = GROUP_ORDER.indexOf(b.name);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
+    .sort((a, b) => position(a.name) - position(b.name));
 }
 
 function Sidebar({ nav }: { nav: NavEntry[] }) {
