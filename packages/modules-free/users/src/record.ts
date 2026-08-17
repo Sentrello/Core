@@ -20,7 +20,8 @@ export type SecurityAction =
   | "two-factor.revoked"
   | "sessions.revoked"
   | "member.removed"
-  | "member.invited";
+  | "member.invited"
+  | "invitation.cancelled";
 
 /** What each one says in a sentence, for the screen and for support. */
 export const ACTION_TEXT: Record<SecurityAction, string> = {
@@ -30,6 +31,7 @@ export const ACTION_TEXT: Record<SecurityAction, string> = {
   "sessions.revoked": "signed out every device of",
   "member.removed": "removed",
   "member.invited": "invited",
+  "invitation.cancelled": "withdrew the invitation to",
 };
 
 export async function record(input: {

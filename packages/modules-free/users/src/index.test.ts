@@ -299,6 +299,48 @@ test("every action that hands access around is written down", async () => {
   }
 });
 
+test("an invitation can be withdrawn, and stops working when it is", async () => {
+  const [invitation] = await db
+    .insert(schema.invitation)
+    .values({
+      id: `invite-${suffix}`,
+      organizationId: orgId,
+      email: `wrong-address-${suffix}@x.test`,
+      role: "staff",
+      status: "pending",
+      expiresAt: new Date(Date.now() + 86_400_000),
+      inviterId: ownerId,
+    })
+    .returning();
+  if (!invitation) throw new Error("no invitation");
+
+  expect((await get()).invitations?.length ?? 0).toBeGreaterThan(0);
+
+  const res = await app.request(
+    `http://localhost/api/users/invitations/${invitation.id}`,
+    { method: "DELETE", headers },
+  );
+  expect(res.status).toBe(200);
+
+  // Marked rather than deleted: Better Auth reads the status when somebody
+  // follows the link, so a withdrawn invitation has to still be there to say
+  // no with.
+  const [after] = await db
+    .select({ status: schema.invitation.status })
+    .from(schema.invitation)
+    .where(eq(schema.invitation.id, invitation.id));
+  expect(after?.status).toBe("canceled");
+
+  // And it is no longer offered as waiting.
+  expect(
+    ((await get()).invitations ?? []).some((i) => i.id === invitation.id),
+  ).toBe(false);
+
+  await db
+    .delete(schema.invitation)
+    .where(eq(schema.invitation.id, invitation.id));
+});
+
 test("a temporary password is readable aloud and not guessable", () => {
   const a = temporaryPassword();
   const b = temporaryPassword();

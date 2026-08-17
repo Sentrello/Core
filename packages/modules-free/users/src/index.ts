@@ -235,6 +235,57 @@ export default defineModule({
     );
 
     /**
+     * Withdrawing an invitation.
+     *
+     * An invitation is a live way into the business: whoever holds that email
+     * can join, with whatever role it names. An administrator who invited the
+     * wrong address, or a person who has since taken another job, needs it
+     * gone — and until now the only thing the screen could do was list it.
+     */
+    ctx.app.delete(
+      "/api/users/invitations/:id",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const session = c.get("session");
+        const orgId = activeOrganizationId(session);
+
+        const [invitation] = await db
+          .select({
+            id: schema.invitation.id,
+            email: schema.invitation.email,
+            role: schema.invitation.role,
+          })
+          .from(schema.invitation)
+          .where(
+            and(
+              eq(schema.invitation.id, c.req.param("id")),
+              eq(schema.invitation.organizationId, orgId),
+            ),
+          )
+          .limit(1);
+        if (!invitation) return c.json({ error: "not found" }, 404);
+
+        // Marked rather than deleted: Better Auth reads the status when
+        // somebody follows the link, so a cancelled invitation must still be
+        // there to say no with.
+        await db
+          .update(schema.invitation)
+          .set({ status: "canceled" })
+          .where(eq(schema.invitation.id, invitation.id));
+
+        await record({
+          organizationId: orgId,
+          actor: session.user,
+          subject: { id: null, name: invitation.email },
+          action: "invitation.cancelled",
+          detail: { role: invitation.role },
+        });
+        return c.json({ cancelled: true });
+      },
+    );
+
+    /**
      * Taking somebody off the instance.
      *
      * Their membership goes and their sessions end. The user record itself

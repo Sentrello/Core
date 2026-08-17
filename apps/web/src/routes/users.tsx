@@ -176,6 +176,12 @@ function People({ custom }: { custom: OrgRole[] }) {
     onSuccess: refresh,
   });
 
+  const cancelInvite = useMutation({
+    mutationFn: (id: string) =>
+      api(`/api/users/invitations/${id}`, { method: "DELETE" }),
+    onSuccess: refresh,
+  });
+
   const resetPassword = useMutation({
     mutationFn: (person: Person) =>
       api<{ password: string }>(`/api/users/${person.userId}/password`, {
@@ -242,9 +248,45 @@ function People({ custom }: { custom: OrgRole[] }) {
         </div>
         {invite.error ? <ErrorNote error={invite.error} /> : null}
         {invitations.length > 0 ? (
-          <p className="mt-2 text-sm" style={muted}>
-            Waiting to be accepted: {invitations.map((i) => i.email).join(", ")}
-          </p>
+          <div className="mt-3">
+            <p className="text-sm font-medium">Waiting to be accepted</p>
+            <p className="text-xs" style={muted}>
+              Only the person invited can accept — the link goes to their email.
+              Until they do, you can withdraw it.
+            </p>
+            <ul className="mt-1 space-y-1 text-sm">
+              {invitations.map((i) => (
+                <li
+                  key={i.id}
+                  className="flex flex-wrap items-baseline justify-between gap-2 border-t pt-1"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <span>
+                    {i.email}{" "}
+                    <span className="text-xs" style={muted}>
+                      as {i.role} · expires {formatDate(i.expiresAt)}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs"
+                    style={{ color: "var(--color-danger)" }}
+                    disabled={cancelInvite.isPending}
+                    onClick={() =>
+                      confirm(
+                        `Withdraw the invitation to ${i.email}? Their link stops working.`,
+                      ) && cancelInvite.mutate(i.id)
+                    }
+                  >
+                    Withdraw
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {cancelInvite.error ? (
+              <ErrorNote error={cancelInvite.error} />
+            ) : null}
+          </div>
         ) : null}
       </Card>
 
