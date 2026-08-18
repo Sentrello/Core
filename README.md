@@ -241,4 +241,4 @@ changes under the same licence.
 Pro features and optional modules are separately licensed commercial software
 and are not covered by the AGPL.
 
-Built by [Foothills Digital](https://sentrello.com).
+Built by [Sentrello LLC](https://sentrello.com).
