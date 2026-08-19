@@ -182,7 +182,35 @@ app.get("/api/_meta", requireSession(), async (c) => {
     }
   }
 
-  const visible = nav.filter((item) => {
+  /**
+   * Somebody signed in who belongs to no business on this instance.
+   *
+   * They are not staff who have lost a permission — they are not staff at all.
+   * sentrello.com creates exactly such an account for every customer who buys
+   * Pro, on the same instance that runs our own books, and the first one of
+   * those was shown the whole sidebar: every screen offered, every route
+   * refusing them after the click.
+   *
+   * So the answer for a member of nothing is nothing, and the shell says so
+   * rather than drawing a menu out of habit.
+   */
+  /**
+   * Any membership at all, not merely one in the active organization: a
+   * session created moments before somebody joined has no active organization
+   * yet, and the first owner's own sign-up is exactly that case. Asking the
+   * narrower question would have shown the person who just claimed the
+   * instance an empty application.
+   */
+  const [anyMembership] = membership
+    ? [membership]
+    : await db
+        .select({ role: schema.member.role })
+        .from(schema.member)
+        .where(eq(schema.member.userId, session.user.id))
+        .limit(1);
+  const belongsHere = Boolean(anyMembership);
+
+  const visible = (belongsHere ? nav : []).filter((item) => {
     const allowed = navVisibility.get(item.id);
     if (allowed && !allowed(session)) return false;
 
@@ -215,6 +243,20 @@ app.get("/api/_meta", requireSession(), async (c) => {
   return c.json({
     nav: visible,
     loaded,
+    /**
+     * Whether this person is part of the business running this instance.
+     *
+     * False for a billing-only account, which exists so somebody can manage
+     * what they pay us and reaches nothing else here. The shell shows them a
+     * way out rather than an empty application.
+     */
+    belongsHere,
+    /**
+     * Where such a person should be instead, when this instance is the one
+     * selling Sentrello. Absent everywhere else, which is every customer's own
+     * server — there is nothing to send them to there.
+     */
+    accountPath: loaded.includes("control-plane") ? "/account" : null,
     /**
      * Every optional module this licence allows, and whether it is set up.
      *

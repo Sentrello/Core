@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { roles } from "@sentrello/auth";
+import { auth, roles } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
 import { isEnabled } from "@sentrello/db/modules";
@@ -16,6 +16,8 @@ import { loadModules } from "./loader";
  */
 async function signedIn(): Promise<{
   headers: Headers;
+  email: string;
+  organizationId: string;
   cleanUp: () => Promise<void>;
 }> {
   const email = `boot-${crypto.randomUUID().slice(0, 8)}@x.test`;
@@ -26,8 +28,31 @@ async function signedIn(): Promise<{
   });
   const cookie = signUp.headers.get("set-cookie");
   if (!cookie) throw new Error("sign-up returned no session cookie");
+  const headers = new Headers({ cookie });
+
+  /**
+   * And a business to belong to, because the real first-run path creates one:
+   * `/api/bootstrap` signs the owner up and immediately creates their
+   * organization. A signed-in user who is a member of nothing is a billing
+   * account, not staff, and the shell now treats the two differently — so a
+   * test that skipped this would be asserting against a person who does not
+   * exist in production.
+   */
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const org = await auth.api.createOrganization({
+    body: { name: `Boot ${suffix}`, slug: `boot-${suffix}` },
+    headers,
+  });
+  if (!org) throw new Error("could not create the test organization");
+  await auth.api.setActiveOrganization({
+    body: { organizationId: org.id },
+    headers,
+  });
+
   return {
-    headers: new Headers({ cookie }),
+    headers,
+    email,
+    organizationId: org.id,
     // Left behind, any owner makes the instance look claimed and every
     // bootstrap test then fails on a database this one dirtied.
     cleanUp: async () => {
@@ -36,6 +61,10 @@ async function signedIn(): Promise<{
         .from(schema.user)
         .where(eq(schema.user.email, email));
       if (!u) return;
+      await db.delete(schema.member).where(eq(schema.member.userId, u.id));
+      await db
+        .delete(schema.organizations)
+        .where(eq(schema.organizations.id, org.id));
       await db.delete(schema.session).where(eq(schema.session.userId, u.id));
       await db.delete(schema.account).where(eq(schema.account.userId, u.id));
       await db.delete(schema.user).where(eq(schema.user.id, u.id));
@@ -265,6 +294,52 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
     "users",
   ]);
   expect(body.loaded).not.toContain("pro-core");
+  await cleanUp();
+});
+
+/**
+ * The failure a real customer met.
+ *
+ * sentrello.com creates a billing account for every buyer, on the same
+ * instance that runs the business's own books. Being a member of no
+ * organization, that account was shown the entire sidebar — every screen
+ * offered, every route refusing them after the click.
+ */
+test("somebody who belongs to no business is offered nothing at all", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+
+  const { headers, email, cleanUp } = await signedIn();
+  const [user] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, email));
+
+  const before = (await (
+    await server.fetch(new Request("http://localhost/api/_meta", { headers }))
+  ).json()) as { nav: { id: string }[]; belongsHere: boolean };
+  expect(before.nav.length).toBeGreaterThan(0);
+  expect(before.belongsHere).toBe(true);
+
+  // What a billing account is: a real login, a member of no business. Scoped
+  // to this user, because other tests are entitled to their own memberships.
+  await db
+    .delete(schema.member)
+    .where(eq(schema.member.userId, user?.id as string));
+
+  const after = (await (
+    await server.fetch(new Request("http://localhost/api/_meta", { headers }))
+  ).json()) as {
+    nav: { id: string }[];
+    belongsHere: boolean;
+    accountPath: string | null;
+  };
+  expect(after.nav).toEqual([]);
+  expect(after.belongsHere).toBe(false);
+  // Nothing to send them to on an instance that does not sell Sentrello.
+  expect(after.accountPath).toBeNull();
+
   await cleanUp();
 });
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type Meta, api } from "./lib/api";
 import { AppShell } from "./lib/app-shell";
-import { useSession } from "./lib/auth";
+import { signOut, useSession } from "./lib/auth";
 import { setModuleRelease } from "./lib/module-ui";
 import {
   Breadcrumb,
@@ -141,6 +141,33 @@ function CurrentScreen({ nav }: { nav: Meta["nav"] }) {
   );
 }
 
+/**
+ * Signed in, with nothing here to open.
+ *
+ * On a customer's own server this means somebody whose membership was removed,
+ * which is worth saying plainly rather than showing them a blank page.
+ */
+function NoAccess() {
+  return (
+    <div className="mx-auto max-w-md p-8 text-center">
+      <p className="font-medium">This account has no access to this instance</p>
+      <p className="mt-2 text-sm" style={{ color: "var(--text-muted)" }}>
+        Ask an administrator to invite you, or sign in with a different account.
+      </p>
+      <button
+        type="button"
+        className="mt-4 text-sm underline"
+        onClick={async () => {
+          await signOut();
+          window.location.reload();
+        }}
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const session = useSession();
   const signedIn = Boolean(session.data);
@@ -168,6 +195,22 @@ export default function App() {
   // Signed in, and the shell does not know what to draw yet. Both of these
   // wait on the session, so they cannot be fetched alongside it.
   if (meta.isLoading || profile.isLoading) return <Loading />;
+
+  /**
+   * Signed in, but not part of this business.
+   *
+   * A billing-only account: somebody who bought Sentrello and has a login here
+   * solely to manage their subscription. They get sent straight to it and see
+   * none of the application — not an empty shell, and certainly not a sidebar
+   * full of screens that would refuse them.
+   */
+  if (data && data.belongsHere === false) {
+    if (data.accountPath) {
+      window.location.replace(data.accountPath);
+      return <Loading />;
+    }
+    return <NoAccess />;
+  }
 
   // Whatever the server put first, rather than a hard-coded module: a Core
   // instance and a Pro one with a dashboard should each land somewhere that

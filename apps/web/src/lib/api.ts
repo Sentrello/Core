@@ -49,6 +49,16 @@ export type Meta = {
   modules: { id: string; label: string; enabled: boolean }[];
   /** module ids that shipped screens this instance may serve */
   ui: string[];
+  /**
+   * Whether this person is part of the business running this instance.
+   *
+   * False for a billing-only account — someone who bought Sentrello and has a
+   * login purely to manage what they pay for. They see none of the
+   * application.
+   */
+  belongsHere?: boolean;
+  /** Where such a person belongs instead, on the instance that sells Sentrello. */
+  accountPath?: string | null;
 };
 
 export type Contact = {
