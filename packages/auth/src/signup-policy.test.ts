@@ -2,6 +2,7 @@ import { afterAll, afterEach, expect, test } from "bun:test";
 import { db, eq, schema } from "@sentrello/db";
 import { auth } from "./index";
 import {
+  allowSignupFor,
   setupTokenAccepted,
   setupTokenRequired,
   signUpAllowed,
@@ -135,4 +136,40 @@ test("a fresh instance still refuses a direct sign-up: claiming goes through boo
   // no organization exists in this branch, which used to be enough on its own
   const decision = await signUpAllowed("first-comer@example.test", false);
   expect(decision.allowed).toBe(false);
+});
+
+/**
+ * How sentrello.com creates a billing account at checkout: the server itself
+ * asks for one address, and the endpoint stays closed to everyone else — both
+ * during that call and after it.
+ */
+test("the server can create an account for one named address, and only that one", async () => {
+  await withOrganization(async () => {
+    const buyer = `buyer-${suffix}@example.test`;
+
+    await allowSignupFor(buyer, async () => {
+      expect((await signUpAllowed(buyer, false)).allowed).toBe(true);
+      // Same window, different address: still closed. A plain flag would have
+      // opened registration to the whole internet for these few milliseconds.
+      expect(
+        (await signUpAllowed("stranger@example.test", false)).allowed,
+      ).toBe(false);
+    });
+
+    // And it closes behind itself, even for the address it was opened for.
+    expect((await signUpAllowed(buyer, false)).allowed).toBe(false);
+  });
+});
+
+test("the allowance is released even when creating the account throws", async () => {
+  await withOrganization(async () => {
+    const buyer = `throws-${suffix}@example.test`;
+    await expect(
+      allowSignupFor(buyer, async () => {
+        throw new Error("Stripe said no");
+      }),
+    ).rejects.toThrow("Stripe said no");
+
+    expect((await signUpAllowed(buyer, false)).allowed).toBe(false);
+  });
 });

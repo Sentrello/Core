@@ -25,6 +25,7 @@ export function Forms() {
   const [showing, setShowing] = useState<FormRow | null>(null);
   const [building, setBuilding] = useState<FormRow | null>(null);
   const [viewing, setViewing] = useState<FormRow | null>(null);
+  const [siting, setSiting] = useState<FormRow | null>(null);
 
   // Offered rather than created at first run: a business that deliberately
   // deleted its forms should not find them back tomorrow.
@@ -107,10 +108,21 @@ export function Forms() {
                 {f.tag ? <span className="ml-1 text-xs">· {f.tag}</span> : null}
               </td>
               <td style={muted}>{f.fields?.length ?? 0}</td>
-              <td style={muted}>
-                {f.allowedOrigins?.length
-                  ? f.allowedOrigins.join(", ")
-                  : "this site only"}
+              {/*
+                A form with no sites listed works nowhere but here, and every
+                embed is for somebody else's website — so the empty case is
+                shown as something to fix rather than as a setting.
+              */}
+              <td style={f.allowedOrigins?.length ? muted : undefined}>
+                <button
+                  type="button"
+                  className="text-left underline"
+                  onClick={() => setSiting(f)}
+                >
+                  {f.allowedOrigins?.length
+                    ? f.allowedOrigins.join(", ")
+                    : "No sites yet — add one"}
+                </button>
               </td>
               <td className="text-right">
                 <div className="flex justify-end gap-2">
@@ -119,6 +131,9 @@ export function Forms() {
                   </Button>
                   <Button variant="secondary" onClick={() => setBuilding(f)}>
                     Edit questions
+                  </Button>
+                  <Button variant="secondary" onClick={() => setSiting(f)}>
+                    Allowed sites
                   </Button>
                   <Button variant="secondary" onClick={() => setShowing(f)}>
                     Embed code
@@ -129,6 +144,13 @@ export function Forms() {
           ))}
         </Table>
       )}
+
+      {siting ? (
+        <AllowedSites
+          form={rows.find((r) => r.id === siting.id) ?? siting}
+          onClose={() => setSiting(null)}
+        />
+      ) : null}
 
       {viewing ? (
         <Submissions form={viewing} onClose={() => setViewing(null)} />
@@ -152,6 +174,114 @@ export function Forms() {
 }
 
 /**
+ * The sites a form is allowed to appear on.
+ *
+ * Its own panel, and a list rather than a line of comma-separated text. This
+ * is the setting that decides whether an embed works at all, and while it sat
+ * inside the embed-code panel as one long string, the honest reading of the
+ * product was that a form only worked on the instance itself.
+ *
+ * Each site is added and removed on its own, because that is what people do
+ * with them: a business puts a form on its main site, then on a landing page,
+ * then takes the landing page down.
+ */
+function AllowedSites({
+  form,
+  onClose,
+}: {
+  form: FormRow;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [entry, setEntry] = useState("");
+  const sites = form.allowedOrigins ?? [];
+
+  const save = useMutation({
+    mutationFn: (next: string[]) =>
+      api(`/api/forms/${form.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ allowedOrigins: next }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["forms"] }),
+  });
+
+  const add = () => {
+    const site = entry.trim();
+    if (!site) return;
+    // Cleared after the server has taken it, not before: a rejected entry
+    // stays in the box to be corrected rather than vanishing with the error.
+    save.mutate([...sites, site], { onSuccess: () => setEntry("") });
+  };
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-medium">{form.name} — allowed sites</p>
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+
+      <p className="mb-3 text-sm" style={muted}>
+        The websites this form may be embedded on. A form with no sites listed
+        works only on this instance, so an embed pasted anywhere else shows
+        nothing.
+      </p>
+
+      {sites.length ? (
+        <ul className="mb-3 space-y-1">
+          {sites.map((site) => (
+            <li
+              key={site}
+              className="flex items-center justify-between border-t py-1.5 text-sm"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <span>{site}</span>
+              <button
+                type="button"
+                className="text-sm underline"
+                style={muted}
+                disabled={save.isPending}
+                onClick={() => save.mutate(sites.filter((s) => s !== site))}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mb-3 text-sm" style={muted}>
+          No sites yet.
+        </p>
+      )}
+
+      <Field
+        label="Add a site"
+        hint="example.com, https://example.com or *.example.com for every subdomain. The site the form is on, not the page."
+      >
+        <div className="flex gap-2">
+          <Input
+            value={entry}
+            placeholder="example.com"
+            onChange={(e) => setEntry(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+          />
+          <Button onClick={add} disabled={save.isPending || !entry.trim()}>
+            {save.isPending ? "Saving…" : "Add"}
+          </Button>
+        </div>
+      </Field>
+      {save.error ? <ErrorNote error={save.error} /> : null}
+    </Card>
+  );
+}
+
+/**
  * The snippet a customer pastes into their own site.
  *
  * The origin allow-list is the security boundary, not the snippet: a form only
@@ -159,10 +289,6 @@ export function Forms() {
  * else's page is refused.
  */
 function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [origins, setOrigins] = useState(
-    (form.allowedOrigins ?? []).join(", "),
-  );
   // Plain HTML: the endpoint accepts a normal form post, so the snippet needs
   // no JavaScript and works on any site, including ones that block scripts.
   // The honeypot is hidden from people and irresistible to bots.
@@ -171,20 +297,6 @@ function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
   // to a field was a change to their website — and every site drifted out of
   // step with the form it was showing.
   const snippet = `<script src="${base}/embed.js" data-sentrello-form="${form.key}"></script>`;
-
-  const save = useMutation({
-    mutationFn: () =>
-      api(`/api/forms/${form.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          allowedOrigins: origins
-            .split(",")
-            .map((o) => o.trim())
-            .filter(Boolean),
-        }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["forms"] }),
-  });
 
   return (
     <Card>
@@ -195,19 +307,18 @@ function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
         </Button>
       </div>
 
-      <Field
-        label="Sites allowed to use this form"
-        hint="Comma separated, e.g. https://example.com, https://*.example.com. Leave empty to allow only this site."
-      >
-        <Input value={origins} onChange={(e) => setOrigins(e.target.value)} />
-      </Field>
-      <div className="mt-2">
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          {save.isPending ? "Saving…" : "Save"}
-        </Button>
-      </div>
+      {/*
+        Said here as well as on the row, because this is the panel somebody
+        has open at the moment they paste the snippet into their own site.
+      */}
+      {form.allowedOrigins?.length ? null : (
+        <p className="mb-3 text-sm">
+          This form has no allowed sites yet, so this snippet will show nothing
+          anywhere but here. Add the site under <em>Allowed sites</em> first.
+        </p>
+      )}
 
-      <p className="mt-4 mb-1 text-sm font-medium">Paste this into your page</p>
+      <p className="mt-1 mb-1 text-sm font-medium">Paste this into your page</p>
       <pre
         className="overflow-x-auto rounded border p-3 text-xs"
         style={{ borderColor: "var(--border)" }}
@@ -221,7 +332,6 @@ function EmbedCode({ form, onClose }: { form: FormRow; onClose: () => void }) {
       >
         Copy
       </Button>
-      {save.error ? <ErrorNote error={save.error} /> : null}
     </Card>
   );
 }

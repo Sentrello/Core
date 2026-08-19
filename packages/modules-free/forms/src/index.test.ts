@@ -425,6 +425,95 @@ test("a bot filling the honeypot sees what a person sees", async () => {
 });
 
 /**
+ * Editing the allow-list is the only thing standing between a form and the
+ * site it was made for: an embed lives on somebody else's page, so a saved
+ * origin has to reach the public endpoints on the very next request.
+ */
+test("a site added to the allow-list can immediately load and post the form", async () => {
+  const created = await app.request("http://localhost/api/forms", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Allow-list form", kind: "contact" }),
+  });
+  const { form } = (await created.json()) as {
+    form: { id: string; key: string };
+  };
+
+  // Nowhere yet, so the site it is destined for is refused.
+  const before = await app.request(
+    `http://localhost/api/embed/forms/${form.key}`,
+    { headers: { origin: "https://newsite.example" } },
+  );
+  expect(before.status).toBe(404);
+
+  const saved = await app.request(`http://localhost/api/forms/${form.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ allowedOrigins: ["https://newsite.example"] }),
+  });
+  expect(saved.status).toBe(200);
+  const updated = (await saved.json()) as {
+    form: { allowedOrigins: string[] };
+  };
+  expect(updated.form.allowedOrigins).toEqual(["newsite.example"]);
+
+  const after = await app.request(
+    `http://localhost/api/embed/forms/${form.key}`,
+    { headers: { origin: "https://newsite.example" } },
+  );
+  expect(after.status).toBe(200);
+  expect(after.headers.get("access-control-allow-origin")).toBe(
+    "https://newsite.example",
+  );
+});
+
+/**
+ * What people type is not what the check compares, so the two have to be
+ * reconciled somewhere. Here, loudly: a stored line that can never match is a
+ * form that refuses the site it was made for and says nothing about it.
+ */
+test("sites are stored as hosts, and a typo is refused rather than saved", async () => {
+  const created = await app.request("http://localhost/api/forms", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: "Tidy sites", kind: "contact" }),
+  });
+  const { form } = (await created.json()) as { form: { id: string } };
+
+  const saved = await app.request(`http://localhost/api/forms/${form.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      allowedOrigins: [
+        "  HTTPS://Example.com/contact-us  ",
+        "*.Example.com",
+        "example.com",
+        "",
+      ],
+    }),
+  });
+  const body = (await saved.json()) as { form: { allowedOrigins: string[] } };
+  expect(body.form.allowedOrigins).toEqual(["example.com", "*.example.com"]);
+
+  const bad = await app.request(`http://localhost/api/forms/${form.id}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ allowedOrigins: ["not a site"] }),
+  });
+  expect(bad.status).toBe(400);
+
+  // And the refusal left the working list alone.
+  const list = await app.request("http://localhost/api/forms", { headers });
+  const forms = (await list.json()) as {
+    forms: { id: string; allowedOrigins: string[] }[];
+  };
+  expect(forms.forms.find((f) => f.id === form.id)?.allowedOrigins).toEqual([
+    "example.com",
+    "*.example.com",
+  ]);
+});
+
+/**
  * A form's key is a public credential — it is posted to from a stranger's
  * browser — so the management side has to be certain that holding a session
  * for one business shows nothing belonging to another.

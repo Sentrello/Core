@@ -12,6 +12,7 @@ import {
   HONEYPOT_FIELD,
   corsHeaders,
   looksAutomated,
+  normalizeOrigin,
   originAllowed,
   rateLimit,
 } from "@sentrello/module-sdk";
@@ -26,6 +27,39 @@ const KIND = ["contact", "quote"] as const;
 
 function newFormKey(): string {
   return `frm_${randomBytes(12).toString("base64url")}`;
+}
+
+/** More sites than any small business embeds a single form on. */
+const MAX_ORIGINS = 50;
+
+/**
+ * The sites a form may be embedded on, as the check will compare them.
+ *
+ * Throws rather than dropping a bad entry: somebody who typed one wrong needs
+ * to be told, because the failure they would otherwise meet is their own site
+ * showing nothing at all.
+ */
+function cleanOrigins(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new RangeError("allowed sites must be a list");
+  }
+  if (value.length > MAX_ORIGINS) {
+    throw new RangeError(`a form can list at most ${MAX_ORIGINS} sites`);
+  }
+
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") throw new RangeError("that is not a site");
+    if (!entry.trim()) continue;
+    const host = normalizeOrigin(entry);
+    if (!host) {
+      throw new RangeError(
+        `"${entry.trim().slice(0, 60)}" is not a site. Use example.com, https://example.com or *.example.com`,
+      );
+    }
+    if (!out.includes(host)) out.push(host);
+  }
+  return out;
 }
 
 export default defineModule({
@@ -75,6 +109,13 @@ export default defineModule({
             400,
           );
         }
+        let allowedOrigins: string[];
+        try {
+          allowedOrigins = cleanOrigins(body.allowedOrigins ?? []);
+        } catch (err) {
+          return c.json({ error: (err as Error).message }, 400);
+        }
+
         const [row] = await db
           .insert(schema.forms)
           .values({
@@ -82,7 +123,7 @@ export default defineModule({
             key: newFormKey(),
             name: body.name ?? "Contact form",
             kind: body.kind ?? "contact",
-            allowedOrigins: body.allowedOrigins ?? [],
+            allowedOrigins,
             fields: body.fields ?? defaultFields(body.kind ?? "contact"),
             redirectUrl: body.redirectUrl,
             notifyEmail: body.notifyEmail,
@@ -100,6 +141,18 @@ export default defineModule({
         const orgId = activeOrganizationId(c.get("session"));
         const body = await c.req.json();
         const { organizationId: _o, id: _i, key: _k, ...patch } = body;
+
+        // The one field on a form that decides whether it works at all, so it
+        // is cleaned here as well as on the screen: a form is also editable by
+        // anything holding a session, not only by our own page.
+        if ("allowedOrigins" in patch) {
+          try {
+            patch.allowedOrigins = cleanOrigins(patch.allowedOrigins);
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 400);
+          }
+        }
+
         const [row] = await db
           .update(schema.forms)
           .set(patch)

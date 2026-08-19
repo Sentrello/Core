@@ -44,14 +44,59 @@ export function currentVersion(): string {
 }
 
 /**
+ * The newest public release, for an instance with no licence.
+ *
+ * Carries nothing — no key, no instance id, no version — so it tells us only
+ * that somebody, somewhere, pressed a button. That matters: never phoning home
+ * is a promise Free makes, and this is only ever called from
+ * {@link checkForUpdates} when a person asked, never on a timer and never
+ * merely because a screen was opened.
+ */
+async function publicLatestVersion(): Promise<string | null> {
+  const server = process.env.SENTRELLO_LICENSE_SERVER_URL?.trim();
+  if (!server) return null;
+
+  try {
+    const res = await fetch(`${server}/api/distribution/version`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { version?: string };
+    return body.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether asking is even possible — an instance may have no server to ask. */
+export function canCheckForUpdates(): boolean {
+  return (process.env.SENTRELLO_LICENSE_SERVER_URL ?? "").trim() !== "";
+}
+
+/**
+ * What this instance could update to, when somebody asks.
+ *
+ * A licensed instance is told what its licence entitles; a Free one is told
+ * the public release. Both then get the same button, the same wait, and the
+ * same right to sit on the version they have until a quiet afternoon — which
+ * is the whole point: an update takes the business offline for a minute, and
+ * that minute belongs to the business, not to us.
+ */
+export async function checkForUpdates(): Promise<string | null> {
+  return (await licenseKey())
+    ? await latestVersion()
+    : await publicLatestVersion();
+}
+
+/**
  * The release the licence server is offering.
  *
  * Asked of the control plane rather than a registry, because the control plane
  * is the thing that decides what this instance is entitled to — the newest
  * image on a registry may be one whose bundles this licence cannot have.
  *
- * A Free instance has no licence key, and never contacting us is a promise the
- * product makes, so it is told nothing rather than being made to phone home.
+ * Returns nothing for a Free instance, so opening the Settings screen makes no
+ * outbound request. Free asks through {@link checkForUpdates}, on a press.
  */
 export async function latestVersion(): Promise<string | null> {
   const key = await licenseKey();

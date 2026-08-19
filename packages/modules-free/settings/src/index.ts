@@ -20,6 +20,8 @@ import { defineModule } from "@sentrello/module-sdk";
 import { eq } from "drizzle-orm";
 import {
   agentPresent,
+  canCheckForUpdates,
+  checkForUpdates,
   currentVersion,
   isNewer,
   latestVersion,
@@ -189,6 +191,15 @@ export default defineModule({
           latest,
           rollbackTo: await rollbackTarget(),
           updateAvailable: latest !== null && isNewer(latest, current),
+          /**
+           * Whether this instance can go and ask.
+           *
+           * A Free instance is not told anything until somebody presses for
+           * it: it holds no licence to identify itself with, and making one
+           * phone home merely for opening a screen would break the promise
+           * that it never does. Pressing is asking, and asking is fine.
+           */
+          canCheck: canCheckForUpdates(),
           // Without an agent the button would write a file nobody reads, so
           // the screen needs to know to explain instead of offering.
           canApply: await agentPresent(),
@@ -201,6 +212,39 @@ export default defineModule({
            */
           managedExternally: managedExternally(),
           status: await readStatus(),
+        });
+      },
+    );
+
+    /**
+     * Go and find out whether there is a newer release.
+     *
+     * A separate press rather than part of the screen above, because for a
+     * Free instance this is the one moment it talks to us at all. Behind the
+     * update permission, not read: whoever decides to look is whoever decides
+     * to apply, and staff hold read so they can check whether email works.
+     */
+    ctx.app.post(
+      "/api/settings/updates/check",
+      requireSession(),
+      requirePermission({ settings: ["update"] }),
+      async (c) => {
+        const current = currentVersion();
+        const latest = await checkForUpdates();
+
+        if (!latest) {
+          return c.json(
+            {
+              error:
+                "could not reach sentrello.com to check. Releases are also listed on GitHub.",
+            },
+            503,
+          );
+        }
+        return c.json({
+          current,
+          latest,
+          updateAvailable: isNewer(latest, current),
         });
       },
     );
@@ -336,7 +380,11 @@ export default defineModule({
       requirePermission({ settings: ["update"] }),
       async (c) => {
         const current = currentVersion();
-        const latest = await latestVersion();
+        // Asked again here rather than trusting the number the screen sent:
+        // this is what decides which release a business is moved to, and a
+        // version arriving in a request body is a version somebody could
+        // choose for them.
+        const latest = await checkForUpdates();
 
         if (!latest) {
           return c.json(

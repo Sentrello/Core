@@ -134,6 +134,7 @@ export interface SentrelloModule {
 }
 
 export * from "./public-endpoints";
+export * from "./stripe-signature";
 
 /**
  * The context a route handler receives.

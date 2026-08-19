@@ -8,7 +8,8 @@
     "./bootstrap": "./src/bootstrap.ts",
     "./permissions": "./src/permissions.ts",
     "./testing": "./src/testing.ts",
-    "./reset-password": "./src/reset-password.ts"
+    "./reset-password": "./src/reset-password.ts",
+    "./signup-policy": "./src/signup-policy.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.0",

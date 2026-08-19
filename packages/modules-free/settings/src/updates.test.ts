@@ -3,6 +3,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  canCheckForUpdates,
+  checkForUpdates,
   isNewer,
   managedExternally,
   readStatus,
@@ -136,5 +138,58 @@ test("a host whose version is set by its deploy says so", () => {
     expect(managedExternally()).toBe(true);
   } finally {
     process.env.SENTRELLO_MANAGED = saved;
+  }
+});
+
+/**
+ * A Free instance has no licence to identify itself with, so it asks for the
+ * public release number instead — and only when somebody presses for it. This
+ * is the whole of item one: without it, Free has no way to be told an update
+ * exists, and therefore no way to decide to wait until Friday.
+ */
+test("an instance with no licence is told the public release when it asks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "sentrello-updates-"));
+  const saved = {
+    data: process.env.SENTRELLO_DATA_DIR,
+    key: process.env.SENTRELLO_LICENSE_KEY,
+    server: process.env.SENTRELLO_LICENSE_SERVER_URL,
+  };
+
+  // A stand-in control plane, so this asks something real rather than a mock:
+  // the request shape is the contract between the two repositories.
+  const asked: { path: string; body: string }[] = [];
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      asked.push({ path: new URL(req.url).pathname, body: await req.text() });
+      return Response.json({ version: "0.9.9" });
+    },
+  });
+
+  try {
+    process.env.SENTRELLO_DATA_DIR = dir; // no key file in it
+    process.env.SENTRELLO_LICENSE_KEY = undefined;
+    process.env.SENTRELLO_LICENSE_SERVER_URL = `http://localhost:${server.port}`;
+
+    expect(canCheckForUpdates()).toBe(true);
+    expect(await checkForUpdates()).toBe("0.9.9");
+    // Nothing about this instance travels with the question.
+    expect(asked).toEqual([{ path: "/api/distribution/version", body: "" }]);
+  } finally {
+    server.stop(true);
+    process.env.SENTRELLO_DATA_DIR = saved.data;
+    process.env.SENTRELLO_LICENSE_KEY = saved.key;
+    process.env.SENTRELLO_LICENSE_SERVER_URL = saved.server;
+  }
+});
+
+test("an instance with nowhere to ask says so rather than failing", async () => {
+  const saved = process.env.SENTRELLO_LICENSE_SERVER_URL;
+  try {
+    process.env.SENTRELLO_LICENSE_SERVER_URL = undefined;
+    expect(canCheckForUpdates()).toBe(false);
+    expect(await checkForUpdates()).toBeNull();
+  } finally {
+    process.env.SENTRELLO_LICENSE_SERVER_URL = saved;
   }
 });

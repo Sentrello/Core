@@ -58,6 +58,34 @@ export function originAllowed(
   return { allowed: false };
 }
 
+/**
+ * Turn what somebody typed into the host the check compares against.
+ *
+ * People paste "https://example.com/contact", type "www.example.com " with a
+ * stray space, or write "*.example.com". All three name a site, so all three
+ * are accepted and stored as a host. Storing the raw text instead would mean a
+ * form that silently refuses the very site it was made for, and the only clue
+ * would be a console warning on somebody else's website.
+ *
+ * `null` for anything that is not a host, so the screen can say which entry is
+ * wrong rather than saving a line that will never match.
+ */
+export function normalizeOrigin(entry: string): string | null {
+  const raw = entry.trim().toLowerCase();
+  if (!raw) return null;
+
+  const wildcard = raw.startsWith("*.");
+  const rest = wildcard ? raw.slice(2) : raw;
+  const host = rest.includes("://")
+    ? safeHost(rest)
+    : rest.replace(/^\/+/, "").replace(/\/.*$/, "");
+
+  // A host, optionally with a port. Anything else — a path, a space, an email
+  // address — is a typo rather than a site.
+  if (!host || !/^[a-z0-9-]+(\.[a-z0-9-]+)*(:\d+)?$/.test(host)) return null;
+  return wildcard ? `*.${host}` : host;
+}
+
 function safeHost(value: string): string | undefined {
   try {
     return new URL(value).host.toLowerCase();

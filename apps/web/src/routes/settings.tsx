@@ -90,6 +90,8 @@ interface UpdatesResponse {
   rollbackTo: string | null;
   updateAvailable: boolean;
   canApply: boolean;
+  /** Whether this instance has somewhere to ask. Free asks only when pressed. */
+  canCheck: boolean;
   /** Something other than this screen owns the version — a deploy script. */
   managedExternally: boolean;
   status: { state: string; message?: string; version?: string; at?: string };
@@ -127,6 +129,19 @@ export function Settings() {
   const applyUpdate = useMutation({
     mutationFn: () => api("/api/settings/updates", { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["updates"] }),
+  });
+
+  /**
+   * A Free instance is told nothing until it is asked to look, so the answer
+   * lives here rather than in the screen's own data. Once looked, it is
+   * offered exactly the button a licensed instance gets.
+   */
+  const check = useMutation({
+    mutationFn: () =>
+      api<{ current: string; latest: string; updateAvailable: boolean }>(
+        "/api/settings/updates/check",
+        { method: "POST" },
+      ),
   });
 
   // Asked for once before it happens. Going back is recoverable — running it
@@ -194,6 +209,18 @@ export function Settings() {
     );
 
   const { stripe, paypal } = data.payments;
+
+  /**
+   * What is known about a newer release right now.
+   *
+   * A licensed instance knows on arrival; a Free one knows once somebody has
+   * pressed to look. From here down the screen makes no distinction between
+   * them — the same offer, the same wait, the same right to leave it until
+   * Friday.
+   */
+  const latest = check.data?.latest ?? updates.data?.latest ?? null;
+  const updateAvailable =
+    check.data?.updateAvailable ?? updates.data?.updateAvailable ?? false;
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -471,11 +498,21 @@ export function Settings() {
       <Card>
         <div className="flex items-baseline justify-between">
           <p className="font-medium">Updates</p>
-          <State
-            ok={!updates.data?.updateAvailable}
-            yes="up to date"
-            no="update available"
-          />
+          {/*
+            An instance that has not looked is not "up to date" — it does not
+            know. Saying so is the difference between a badge and a guess.
+          */}
+          {latest === null ? (
+            <span className="text-sm font-medium" style={muted}>
+              not checked
+            </span>
+          ) : (
+            <State
+              ok={!updateAvailable}
+              yes="up to date"
+              no="update available"
+            />
+          )}
         </div>
 
         <p className="mt-1 text-sm" style={muted}>
@@ -493,13 +530,17 @@ export function Settings() {
             Updating it from this screen would replace the image it runs, so the
             button is deliberately absent.
           </p>
-        ) : updates.data?.updateAvailable ? (
-          updates.data.canApply ? (
+        ) : updateAvailable ? (
+          updates.data?.canApply ? (
             <>
               <p className="mt-1 text-sm">
-                Version {updates.data.latest} is available. Updating takes about
-                a minute, during which the app is unavailable. Your data is not
-                touched.
+                Version {latest} is available. Updating takes about a minute,
+                during which the app is unavailable. Your data is not touched.
+              </p>
+              <p className="mt-1 text-sm" style={muted}>
+                {/* Said plainly, because the fear is that it happens to you. */}
+                Nothing updates on its own — this instance stays on{" "}
+                {updates.data.current} until you press it.
               </p>
               <div className="mt-2">
                 <Button
@@ -511,16 +552,47 @@ export function Settings() {
                 >
                   {["requested", "running"].includes(updates.data.status.state)
                     ? "Updating…"
-                    : `Update to ${updates.data.latest}`}
+                    : `Update to ${latest}`}
                 </Button>
               </div>
             </>
           ) : (
             <p className="mt-1 text-sm">
-              Version {updates.data.latest} is available. This instance cannot
-              update itself, so run <code>sentrello update</code> on the server.
+              Version {latest} is available. This instance cannot update itself,
+              so run <code>sentrello update</code> on the server.
             </p>
           )
+        ) : latest !== null ? null : updates.data?.canCheck ? (
+          /*
+            The Free path. Nothing has been asked of anyone yet: this instance
+            holds no licence to identify itself with, and it does not contact
+            us until somebody presses this. What comes back is a version
+            number and nothing else.
+          */
+          <>
+            <p className="mt-1 text-sm" style={muted}>
+              This instance does not check for updates by itself. Look now, and
+              it will tell you whether a newer version exists — you decide when
+              to apply it.
+            </p>
+            <div className="mt-2">
+              <Button
+                variant="secondary"
+                onClick={() => check.mutate()}
+                disabled={check.isPending}
+              >
+                {check.isPending ? "Checking…" : "Check for updates"}
+              </Button>
+            </div>
+            {check.error ? <ErrorNote error={check.error} /> : null}
+          </>
+        ) : null}
+
+        {/* Looked, and there was nothing. Worth saying once. */}
+        {latest !== null && !updateAvailable && check.data ? (
+          <p className="mt-1 text-sm" style={muted}>
+            Version {latest} is the newest release, and this instance is on it.
+          </p>
         ) : null}
 
         {/*
@@ -598,10 +670,10 @@ export function Settings() {
 
         {applyUpdate.error ? <ErrorNote error={applyUpdate.error} /> : null}
 
-        {updates.data && updates.data.latest === null ? (
+        {updates.data && !updates.data.canCheck && latest === null ? (
           <p className="mt-1 text-sm" style={muted}>
-            Update checks need a licence, so this instance will not check on its
-            own. Updates are published on GitHub.
+            This instance has nowhere to check with, so it cannot tell you
+            whether a newer version exists. Releases are published on GitHub.
           </p>
         ) : null}
       </Card>

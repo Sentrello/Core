@@ -19,16 +19,44 @@ export function duringBootstrap<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Addresses the server itself is in the middle of creating an account for.
+ *
+ * Scoped to one address and held for one call rather than opening sign-up
+ * globally, which is what a plain flag would do: the window is milliseconds,
+ * but on a publicly reachable instance a millisecond of open registration is
+ * still open registration. Anyone racing this would additionally have to know
+ * the exact address being registered.
+ */
+const expected = new Set<string>();
+
+export async function allowSignupFor<T>(
+  email: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const key = email.trim().toLowerCase();
+  expected.add(key);
+  try {
+    return await fn();
+  } finally {
+    expected.delete(key);
+  }
+}
+
+/**
  * Who may create an account on this instance.
  *
  * Left open, every deployed instance is a public sign-up form. Sign-up is
- * closed by default, with exactly three ways through:
+ * closed by default, with exactly four ways through:
  *
  *  1. **The first-run owner**, and only via `/api/bootstrap` — never by calling
  *     the sign-up endpoint directly.
  *  2. **An invitation.** The address holds a pending invitation from someone
  *     who already has the right to invite.
  *  3. **An explicit opt-in**, for anyone genuinely running open registration.
+ *  4. **The server creating one itself**, for a named address, through
+ *     {@link allowSignupFor} — how sentrello.com makes a billing account at
+ *     checkout. A request that merely arrives at the sign-up endpoint can
+ *     never reach this.
  */
 export async function signUpAllowed(
   email: string | undefined,
@@ -38,6 +66,9 @@ export async function signUpAllowed(
 > {
   if (bootstrapping) {
     return { allowed: true, reason: "first-run owner via /api/bootstrap" };
+  }
+  if (email && expected.has(email.trim().toLowerCase())) {
+    return { allowed: true, reason: "created by the server for this address" };
   }
   if (openRegistration) {
     return { allowed: true, reason: "open registration is enabled" };
