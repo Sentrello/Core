@@ -202,3 +202,44 @@ test("changing a password needs the old one", async () => {
   });
   expect(right.status).toBe(200);
 });
+
+/**
+ * A billing account: signed in, a member of nothing, on the instance that
+ * sells Sentrello. It has sessions to see and no preferences to read.
+ *
+ * This threw, and the 500 landed on every such sign-in — the shell fetches
+ * this before it can decide what to draw, so a customer's first impression of
+ * the product was a server error in the console.
+ */
+test("somebody who belongs to no organization gets their profile, not a 500", async () => {
+  const loose = `profile-loose-${crypto.randomUUID().slice(0, 8)}@x.test`;
+  const signUp = await signUpAsOwner({
+    email: loose,
+    password: "correct-horse-battery-staple",
+    name: "Billing Only",
+  });
+  const cookie = signUp.headers.get("set-cookie");
+  if (!cookie) throw new Error("sign-up returned no session cookie");
+
+  const res = await app.request("http://localhost/api/profile", {
+    headers: new Headers({ cookie }),
+  });
+  expect(res.status).toBe(200);
+
+  const body = (await res.json()) as {
+    preferences: typeof DEFAULTS;
+    sessions: { id: string }[];
+  };
+  expect(body.preferences).toEqual(DEFAULTS);
+  expect(body.sessions.length).toBeGreaterThan(0);
+
+  const [u] = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, loose));
+  if (u) {
+    await db.delete(schema.session).where(eq(schema.session.userId, u.id));
+    await db.delete(schema.account).where(eq(schema.account.userId, u.id));
+    await db.delete(schema.user).where(eq(schema.user.id, u.id));
+  }
+});

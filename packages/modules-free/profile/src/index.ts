@@ -45,10 +45,19 @@ export default defineModule({
   register(ctx) {
     ctx.app.get("/api/profile", requireSession(), async (c) => {
       const session = c.get("session");
-      const orgId = activeOrganizationId(session);
+      /**
+       * Read directly rather than through `activeOrganizationId`, which throws
+       * by design so a business query can never lose its org filter.
+       *
+       * This is not a business query. Somebody signed in who belongs to no
+       * organization — a billing account on the instance that sells Sentrello
+       * — still has sessions to see and no preferences to read, and answering
+       * with a 500 made every one of their sign-ins look like a broken server.
+       */
+      const orgId = session.session.activeOrganizationId;
 
       const [preferences, sessions] = await Promise.all([
-        readPreferences(orgId, session.user.id),
+        orgId ? readPreferences(orgId, session.user.id) : DEFAULTS,
         // Read directly rather than through `auth.api.listSessions`, which
         // needs the request headers and returns tokens. A token is a bearer
         // credential; the screen only needs enough to recognise a device.
