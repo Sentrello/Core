@@ -13,7 +13,6 @@ import type { SentrelloModule } from "@sentrello/module-sdk";
  */
 export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/pro-core",
-  "@sentrello/mod-time-tracking",
   "@sentrello/mod-scheduling",
   "@sentrello/mod-shop",
   "@sentrello/mod-make-deal",
@@ -23,7 +22,6 @@ export const OPTIONAL_MODULE_PACKAGES = [
   // SENTRELLO_MASTER=true. It is never built into any customer bundle, so on
   // every other host this name simply does not resolve.
   "@sentrello/master",
-  "@sentrello/mod-hr",
   "@sentrello/mod-inventory",
   "@sentrello/mod-projects",
   "@sentrello/mod-documents",
