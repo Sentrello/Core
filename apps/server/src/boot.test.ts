@@ -235,6 +235,29 @@ test("a job from an unentitled module is never scheduled", () => {
   expect(jobs).toEqual([]);
 });
 
+/**
+ * Some modules are ours and belong on one machine — Master, and the SubShop we
+ * sell subscriptions from. They say so themselves, and the loader takes their
+ * word for it before anything is registered: a module that only refused inside
+ * `register` would still have its tables migrated and its screens served.
+ */
+test("a module that declines this host is not loaded at all", async () => {
+  const app = new Hono<SentrelloEnv>();
+  const ours = defineModule({
+    ...mod("subshop", "free"),
+    available: () => false,
+  });
+
+  const { loaded, nav } = loadModules(app, freeGate, [
+    ours,
+    mod("crm", "free"),
+  ]);
+
+  expect(loaded).toEqual(["crm"]);
+  expect(nav.map((n) => n.id)).toEqual(["crm"]);
+  expect((await app.request("http://localhost/api/subshop")).status).toBe(404);
+});
+
 test("a skipped module registers no routes", async () => {
   const app = new Hono<SentrelloEnv>();
   loadModules(app, freeGate, [mod("hr", "module")]);

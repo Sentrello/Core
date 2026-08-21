@@ -22,6 +22,11 @@ export const statement = {
   time: ["read", "create", "update", "delete", "approve"],
   scheduling: ["read", "create", "update", "delete"],
   shop: ["read", "create", "update", "delete"],
+  // Sentrello's own storefront, which only ever runs on bmp. It is a separate
+  // resource from `shop` because the two can run side by side there, and
+  // selling our own subscriptions is not the same job as selling a customer's
+  // products.
+  subshop: ["read", "create", "update", "delete"],
   projects: ["read", "create", "update", "delete"],
   inventory: ["read", "create", "update", "delete"],
   documents: ["read", "create", "update", "delete"],
@@ -47,6 +52,7 @@ export const admin = ac.newRole({
   time: ["read", "create", "update", "delete", "approve"],
   scheduling: ["read", "create", "update", "delete"],
   shop: ["read", "create", "update", "delete"],
+  subshop: ["read", "create", "update", "delete"],
   projects: ["read", "create", "update", "delete"],
   inventory: ["read", "create", "update", "delete"],
   documents: ["read", "create", "update", "delete"],

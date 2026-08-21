@@ -14,10 +14,13 @@ import type { SentrelloModule } from "@sentrello/module-sdk";
 export const OPTIONAL_MODULE_PACKAGES = [
   "@sentrello/pro-core",
   "@sentrello/mod-scheduling",
-  "@sentrello/mod-shop",
   "@sentrello/mod-make-deal",
   // sentrello.com only, and additionally gated by SENTRELLO_CONTROL_PLANE=true
   "@sentrello/control-plane",
+  // bmp.sentrello.com only, like Master: Sentrello's own storefront for
+  // selling Pro and the modules, gated again by SENTRELLO_SUBSHOP=true. The
+  // Shop customers buy is a different module.
+  "@sentrello/subshop",
   // bmp.sentrello.com only: Sentrello's own console, gated again by
   // SENTRELLO_MASTER=true. It is never built into any customer bundle, so on
   // every other host this name simply does not resolve.

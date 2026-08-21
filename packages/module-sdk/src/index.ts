@@ -151,6 +151,22 @@ export interface SentrelloModule {
    * The file is built, not source. Customers' servers have no build tools.
    */
   ui?: string;
+  /**
+   * Whether this module belongs on this host at all.
+   *
+   * The licence decides what a business has bought. This decides something the
+   * licence cannot express: that a module is Sentrello's own and runs on one
+   * machine — Master, and the SubShop we sell our own subscriptions from.
+   *
+   * Refusing inside `register` is not enough. A module that loads and
+   * registers nothing still has its tables migrated and its screens served,
+   * and still appears in `/healthz` as loaded — so an instance that must never
+   * have it would quietly grow its tables. Declining here means it was never
+   * loaded, which is the claim we actually want to make.
+   *
+   * Absent means yes, which is what every module a customer buys should say.
+   */
+  available?: () => boolean;
   register(ctx: ModuleContext): void;
 }
 

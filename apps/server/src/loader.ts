@@ -51,7 +51,10 @@ export function loadModules(
         (m.tier === "pro" && entitled({ tier: "pro" })) ||
         (m.tier === "module" && entitled({ module: m.id }));
       const depsOk = (m.requires ?? []).every((d) => loaded.has(d));
-      if (!tierOk || !depsOk) continue;
+      // A module may decline the host itself — ours do, on the flag that says
+      // which machine this is. Checked before anything is registered, so a
+      // declined module has no tables, no screens and no place in /healthz.
+      if (!tierOk || !depsOk || m.available?.() === false) continue;
       m.register({
         app,
         entitled,
