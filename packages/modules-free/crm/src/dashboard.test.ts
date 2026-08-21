@@ -212,3 +212,72 @@ test("another organization's CRM never appears on this one's dashboard", async (
     await db.delete(table).where(eq(table.organizationId, theirs));
   }
 });
+
+/**
+ * A stage cannot be removed while deals are standing in it. The alternative is
+ * a deal whose stage matches no column: invisible on the board, still in the
+ * database, found when somebody asks where the job went.
+ */
+test("removing a stage that still holds deals is refused, and says how many", async () => {
+  await db.insert(schema.deals).values([
+    { organizationId: orgId, name: "Sitting in proposal", stage: "proposal" },
+    { organizationId: orgId, name: "Also proposal", stage: "proposal" },
+  ]);
+
+  const res = await app.request("http://localhost/api/crm/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      dealStages: [
+        { id: "opportunity", label: "Opportunity" },
+        { id: "won", label: "Won" },
+      ],
+      taskTypes: ["call"],
+    }),
+  });
+
+  expect(res.status).toBe(409);
+  const body = (await res.json()) as {
+    error: string;
+    stranded: Record<string, number>;
+  };
+  expect(body.error).toContain("2 deals are still in");
+  expect(body.stranded.proposal).toBe(2);
+
+  // And nothing was saved: the board still draws the stage those deals are in.
+  const after = (await (
+    await app.request("http://localhost/api/crm/settings", { headers })
+  ).json()) as { dealStages: { id: string }[] };
+  expect(after.dealStages.map((s) => s.id)).toContain("proposal");
+});
+
+test("a renamed stage keeps its deals", async () => {
+  const res = await app.request("http://localhost/api/crm/settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      dealStages: [
+        { id: "opportunity", label: "Enquiry" },
+        { id: "proposal", label: "Quote sent" },
+        { id: "won", label: "Won" },
+        { id: "lost", label: "Lost" },
+        { id: "negotiation", label: "Negotiation" },
+      ],
+      taskTypes: ["call", "site visit"],
+    }),
+  });
+  expect(res.status).toBe(200);
+
+  const saved = (await res.json()) as {
+    dealStages: { id: string; label: string }[];
+    usingDefaults: boolean;
+  };
+  expect(saved.usingDefaults).toBe(false);
+  expect(saved.dealStages[1]).toEqual({ id: "proposal", label: "Quote sent" });
+
+  // The deals that were in "proposal" are still there, under its new name.
+  const deals = (await (
+    await app.request("http://localhost/api/deals", { headers })
+  ).json()) as { deals: { stage: string }[] };
+  expect(deals.deals.filter((d) => d.stage === "proposal").length).toBe(2);
+});

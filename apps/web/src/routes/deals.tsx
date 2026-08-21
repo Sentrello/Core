@@ -34,20 +34,36 @@ interface Deal {
 }
 
 /** Left to right, in the order a deal actually travels. */
-const STAGES = [
+/**
+ * What the board draws before the server has answered.
+ *
+ * These used to *be* the pipeline, hard-coded here, which meant every business
+ * ran the process a developer picked. They are now only the fallback: CRM
+ * Settings owns the real list, and an instance that has never opened it gets
+ * exactly these.
+ */
+const DEFAULT_STAGES = [
   { id: "opportunity", label: "Opportunity" },
   { id: "proposal", label: "Proposal" },
   { id: "negotiation", label: "Negotiation" },
   { id: "won", label: "Won" },
   { id: "lost", label: "Lost" },
-] as const;
+];
+
+interface Stage {
+  id: string;
+  label: string;
+}
 
 function Column({
+  stages,
   stage,
   label,
   deals,
   onMove,
 }: {
+  /** Every stage, so a card can be moved to any of them without a mouse. */
+  stages: Stage[];
   stage: string;
   label: string;
   deals: Deal[];
@@ -110,7 +126,7 @@ function Column({
                 color: "var(--text)",
               }}
             >
-              {STAGES.map((s) => (
+              {stages.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.label}
                 </option>
@@ -138,6 +154,18 @@ export function Deals() {
     queryKey: ["deals"],
     queryFn: () => api<{ deals: Deal[] }>("/api/deals"),
   });
+
+  /**
+   * The pipeline this business actually runs, from CRM Settings.
+   *
+   * Falls back to the defaults rather than an empty board while it loads, and
+   * on an instance that has never configured them.
+   */
+  const settings = useQuery({
+    queryKey: ["crm-settings"],
+    queryFn: () => api<{ dealStages: Stage[] }>("/api/crm/settings"),
+  });
+  const stages = settings.data?.dealStages ?? DEFAULT_STAGES;
 
   const move = useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
@@ -222,9 +250,10 @@ export function Deals() {
 
       {/* Scrolls sideways rather than squeezing five columns onto a phone. */}
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {STAGES.map((s) => (
+        {stages.map((s) => (
           <Column
             key={s.id}
+            stages={stages}
             stage={s.id}
             label={s.label}
             deals={byStage(s.id)}

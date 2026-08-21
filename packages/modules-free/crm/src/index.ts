@@ -9,6 +9,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { registerAttachments } from "./attachments";
 import { registerCrmDashboard } from "./dashboard";
 import { registerCrmImages } from "./images";
+import { registerCrmSettings } from "./settings";
 
 /**
  * Org-scoped CRUD for one table. Every query carries the organizationId filter
@@ -924,6 +925,7 @@ export default defineModule({
 
     registerCrmDashboard(ctx);
     registerCrmImages(ctx);
+    registerCrmSettings(ctx);
     for (const resource of Object.keys(tables) as (keyof typeof tables)[]) {
       crud(ctx, resource);
     }

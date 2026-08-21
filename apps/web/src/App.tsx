@@ -13,6 +13,8 @@ import { Bookkeeping } from "./routes/bookkeeping";
 import { Companies, CompanyDetail } from "./routes/companies";
 import { ContactDetail } from "./routes/contact-detail";
 import { Contacts } from "./routes/contacts";
+import { CrmDashboard } from "./routes/crm-dashboard";
+import { CrmSettings } from "./routes/crm-settings";
 import { Dashboard } from "./routes/dashboard";
 import { DealDetail } from "./routes/deal-detail";
 import { Deals } from "./routes/deals";
@@ -36,9 +38,11 @@ import { Users } from "./routes/users";
  */
 const SCREENS: Record<string, () => React.ReactElement | null> = {
   dashboard: Dashboard,
+  "crm-dashboard": CrmDashboard,
   crm: Contacts,
   companies: Companies,
   deals: Deals,
+  "crm-settings": CrmSettings,
   invoicing: Invoices,
   quotes: Quotes,
   bookkeeping: Bookkeeping,

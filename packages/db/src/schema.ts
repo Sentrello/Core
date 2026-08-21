@@ -244,6 +244,30 @@ export const tasks = pgTable(
   (t) => [index("tasks_org_idx").on(t.organizationId)],
 );
 
+/**
+ * What a business calls its own pipeline.
+ *
+ * The stages were hard-coded in the browser, which meant every business ran
+ * somebody else's sales process. A roofer's pipeline is quote → measured →
+ * scheduled; a consultancy's is nothing like it, and neither is served by a
+ * list a developer picked.
+ *
+ * One row per organization. Absent means the defaults, so an instance that
+ * never opens CRM Settings behaves exactly as it did.
+ */
+export const crmSettings = pgTable("crm_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: text("organization_id").notNull().unique(),
+  /**
+   * Ordered. The order is the board, left to right, so it is data rather than
+   * a sort somebody has to reproduce in three places.
+   */
+  dealStages: jsonb("deal_stages").$type<{ id: string; label: string }[]>(),
+  /** Call, email, meeting — whatever this business actually does. */
+  taskTypes: jsonb("task_types").$type<string[]>(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const tags = pgTable(
   "tags",
   {
