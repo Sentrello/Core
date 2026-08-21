@@ -872,33 +872,44 @@ export default defineModule({
   tier: "free",
   register(ctx) {
     /**
-     * The CRM's own section, holding the CRM and nothing else.
+     * The CRM, as one thing with five pages under it.
      *
-     * It used to be a "Sales" group that also carried Quotes, Shop and Make
-     * Deal — three things that sell but are not the book of customers. Mixing
-     * them meant the CRM had no home of its own, and somebody looking for a
-     * contact scanned past an invoice to find it.
+     * It used to register three siblings straight into the section, which put
+     * Contacts, Companies and Deals at the same level as Invoices and the Shop
+     * — five equal items saying nothing about which belong together. The
+     * parent is not a screen: opening it opens its dashboard.
      */
     ctx.registerNav({
-      id: "crm-dashboard",
-      label: "Dashboard",
-      order: 9,
-      group: "CRM",
+      id: "crm",
+      label: "CRM",
+      order: 10,
+      group: "Sales",
+      icon: "contact",
+      // The book of customers is not everybody's to open.
       requires: { crm: ["read"] },
     });
     ctx.registerNav({
-      id: "crm",
+      id: "crm-dashboard",
+      label: "Dashboard",
+      order: 1,
+      parent: "crm",
+      icon: "gauge",
+      requires: { crm: ["read"] },
+    });
+    ctx.registerNav({
+      id: "contacts",
       label: "Contacts",
-      order: 10,
-      group: "CRM",
-      // The book of customers is not everybody's to open.
+      order: 2,
+      parent: "crm",
+      icon: "user",
       requires: { crm: ["read"] },
     });
     ctx.registerNav({
       id: "companies",
       label: "Companies",
-      order: 11,
-      group: "CRM",
+      order: 3,
+      parent: "crm",
+      icon: "building",
       requires: { crm: ["read"] },
     });
     // The pipeline. Named Deals as Atomic CRM has it; the quote-to-payment
@@ -906,19 +917,22 @@ export default defineModule({
     ctx.registerNav({
       id: "deals",
       label: "Deals",
-      order: 12,
-      group: "CRM",
+      order: 4,
+      parent: "crm",
+      icon: "trending-up",
       requires: { crm: ["read"] },
     });
     ctx.registerNav({
       id: "crm-settings",
       label: "Settings",
-      order: 13,
-      group: "CRM",
-      // Stages, tags and what a deal is worth by default: configuration of the
+      order: 5,
+      parent: "crm",
+      icon: "settings",
+      // Stages, tags and the labels this business uses: configuration of the
       // CRM itself, which is not the same authority as reading it.
       requires: { crm: ["update"] },
     });
+
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
     }

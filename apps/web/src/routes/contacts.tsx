@@ -118,7 +118,11 @@ export function Contacts() {
                     type="button"
                     className="underline-offset-2 hover:underline"
                     onClick={() =>
-                      open({ moduleId: "crm", recordId: c.id, title: c.name })
+                      open({
+                        moduleId: "contacts",
+                        recordId: c.id,
+                        title: c.name,
+                      })
                     }
                   >
                     {c.name}

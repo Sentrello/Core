@@ -38,7 +38,16 @@ export type Meta = {
   /** The release this instance runs, used to key module scripts by version. */
   version?: string;
   /** `moduleId` is which module registered the entry, and owns its screens. */
-  nav: { id: string; label: string; order?: number; moduleId: string }[];
+  nav: {
+    id: string;
+    label: string;
+    order?: number;
+    moduleId: string;
+    group?: string;
+    /** Set on a module's own pages: the id of the entry they sit under. */
+    parent?: string;
+    icon?: string;
+  }[];
   loaded: string[];
   /**
    * Every optional module this licence allows, and whether it is set up.

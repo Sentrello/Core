@@ -387,7 +387,7 @@ export function CompanyDetail() {
               {contacts.map((p) => (
                 <li key={p.id}>
                   <RelatedLink
-                    to={{ moduleId: "crm", recordId: p.id, title: p.name }}
+                    to={{ moduleId: "contacts", recordId: p.id, title: p.name }}
                   >
                     {p.name}
                   </RelatedLink>

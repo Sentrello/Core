@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type NavEntry, sections } from "./app-shell";
+import { type NavEntry, childrenOf, sections } from "./app-shell";
 
 /**
  * Sidebar sections — the real function, not a copy of it.
@@ -89,4 +89,59 @@ test("an unrecognised section still goes last, below the known ones", () => {
     { id: "crm", label: "Contacts", group: "Sales", moduleId: "crm" },
   ]);
   expect(out.map((s) => s.name)).toEqual(["", "Sales", "Logistics"]);
+});
+
+/**
+ * A module's pages belong to it, not to the section. The CRM registers five;
+ * before this they landed beside Invoices and the Shop as equals, and the
+ * section read as ten unrelated items.
+ */
+test("a module's own pages do not appear as siblings in its section", () => {
+  const nav = [
+    { id: "crm", label: "CRM", group: "Sales" },
+    { id: "crm-dashboard", label: "Dashboard", parent: "crm" },
+    { id: "contacts", label: "Contacts", parent: "crm" },
+    { id: "deals", label: "Deals", parent: "crm" },
+    { id: "shop", label: "Shop", group: "Sales" },
+  ];
+
+  const sales = sections(nav).find((s) => s.name === "Sales");
+  expect(sales?.items.map((i) => i.id)).toEqual(["crm", "shop"]);
+});
+
+test("a module's pages come back in the order it registered them", () => {
+  const nav = [
+    { id: "crm", label: "CRM", group: "Sales" },
+    { id: "crm-dashboard", label: "Dashboard", parent: "crm" },
+    { id: "contacts", label: "Contacts", parent: "crm" },
+    { id: "crm-settings", label: "Settings", parent: "crm" },
+    { id: "shop", label: "Shop", group: "Sales" },
+  ];
+
+  expect(childrenOf(nav, "crm").map((c) => c.label)).toEqual([
+    "Dashboard",
+    "Contacts",
+    "Settings",
+  ]);
+  // A module with no pages of its own has none, rather than inheriting any.
+  expect(childrenOf(nav, "shop")).toEqual([]);
+});
+
+/**
+ * Sales holds what sells — the CRM, quotes, the shop — rather than being split
+ * so the CRM has a section to itself. That was tried and it pushed the things
+ * a sale passes through into three different places.
+ */
+test("the CRM sits inside Sales, alongside the rest of selling", () => {
+  const nav = [
+    { id: "crm", label: "CRM", group: "Sales" },
+    { id: "quotes", label: "Quotes", group: "Sales" },
+    { id: "shop", label: "Shop", group: "Sales" },
+    { id: "invoicing", label: "Invoices", group: "Money" },
+  ];
+
+  const names = sections(nav).map((s) => s.name);
+  expect(names).toContain("Sales");
+  expect(names).not.toContain("CRM");
+  expect(sections(nav)[0]?.name).toBe("Sales");
 });

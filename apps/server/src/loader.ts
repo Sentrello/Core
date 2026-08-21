@@ -20,6 +20,12 @@ export function loadModules(
     label: string;
     order?: number;
     moduleId: string;
+    /** The rail section this belongs to. */
+    group?: string;
+    /** The entry it nests under, for modules with several screens. */
+    parent?: string;
+    /** Icon name for the rail and the panel. */
+    icon?: string;
   }[] = [];
   // Kept apart from `nav` deliberately: a predicate cannot be serialised, and
   // the nav array is handed to the browser as it stands.

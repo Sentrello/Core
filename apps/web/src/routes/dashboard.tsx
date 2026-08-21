@@ -126,7 +126,7 @@ function Figure({
 const WHERE: Record<string, { moduleId: string; title: string }> = {
   invoice: { moduleId: "invoicing", title: "Invoices" },
   quote: { moduleId: "quotes", title: "Quotes" },
-  task: { moduleId: "crm", title: "Contacts" },
+  task: { moduleId: "contacts", title: "Contacts" },
 };
 
 export function Dashboard() {

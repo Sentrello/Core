@@ -82,6 +82,67 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* The rail: sections as icons, always visible, so switching part of the
+   business is one click from anywhere rather than a scroll. */
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  width: 3.25rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunk, var(--surface-raised));
+  position: sticky;
+  top: 3.25rem;
+  height: calc(100vh - 3.25rem);
+  overflow-y: auto;
+}
+
+.rail-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.6rem;
+  color: var(--text-muted);
+}
+.rail-button:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.rail-button[aria-current="true"] {
+  background: var(--color-brand-500);
+  color: var(--color-neutral-50);
+}
+
+.panel-title {
+  padding: 0.35rem 0.7rem 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* A module's own pages, indented under it and hung off a line so the
+   relationship is visible without a second colour. */
+.nav-children {
+  margin: 0.1rem 0 0.35rem 1.15rem;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border);
+}
+
+/* Both selectors are equally specific and `.app-sidebar .nav-link` comes
+   later, so it won and stacked the icon above the label. Naming both classes
+   settles it without moving code around. */
+.app-sidebar .nav-link.nav-parent {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 /* Sidebar. Fixed width, its own scroll, so a long module list never pushes the
    work off screen. */
 .app-sidebar {
@@ -143,7 +204,11 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding-left: 1.5rem;
+}
+
+.app-sidebar .nav-child {
+  padding-left: 0.7rem;
+  font-size: 0.8125rem;
 }
 
 .menu-panel {

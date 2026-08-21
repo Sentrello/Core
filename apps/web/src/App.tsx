@@ -39,7 +39,7 @@ import { Users } from "./routes/users";
 const SCREENS: Record<string, () => React.ReactElement | null> = {
   dashboard: Dashboard,
   "crm-dashboard": CrmDashboard,
-  crm: Contacts,
+  contacts: Contacts,
   companies: Companies,
   deals: Deals,
   "crm-settings": CrmSettings,
@@ -54,7 +54,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
 
 /** Screens that show a single record, chosen when navigation names one. */
 const RECORD_SCREENS: Record<string, () => React.ReactElement | null> = {
-  crm: ContactDetail,
+  contacts: ContactDetail,
   companies: CompanyDetail,
   deals: DealDetail,
 };

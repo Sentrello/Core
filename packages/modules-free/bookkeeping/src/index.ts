@@ -18,6 +18,7 @@ export default defineModule({
   register(ctx) {
     ctx.registerNav({
       id: "bookkeeping",
+      icon: "wallet",
       label: "Bookkeeping",
       order: 30,
       group: "Money",

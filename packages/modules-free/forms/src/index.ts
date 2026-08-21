@@ -69,6 +69,7 @@ export default defineModule({
   register(ctx) {
     ctx.registerNav({
       id: "forms",
+      icon: "clipboard",
       label: "Forms",
       order: 25,
       group: "Configure",

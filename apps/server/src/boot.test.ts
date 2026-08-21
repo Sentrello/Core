@@ -319,10 +319,11 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
   expect(body.nav.map((n) => n.id)).toEqual([
     "dashboard",
     "crm-dashboard",
-    "crm",
+    "contacts",
     "companies",
     "deals",
     "crm-settings",
+    "crm",
     "quotes",
     "invoicing",
     "forms",
@@ -520,4 +521,43 @@ test("nav entries declare what they need, and the roles agree", () => {
   expect(roles.staff.authorize({ bookkeeping: ["read"] }).success).toBe(false);
   expect(roles.staff.authorize({ settings: ["update"] }).success).toBe(false);
   expect(roles.staff.authorize({ crm: ["read"] }).success).toBe(true);
+});
+
+/**
+ * The sidebar draws itself from this, in two levels: a section holds modules,
+ * and a module holds its own pages. If the relationship is not in the payload
+ * the browser has to guess it from naming, which is how the CRM's five screens
+ * ended up as five siblings of the Shop.
+ */
+test("/api/_meta says which entries are a module's own pages", async () => {
+  process.env.SENTRELLO_LICENSE_PUBLIC_KEY_PATH = "secrets/license_public.pem";
+  process.env.SENTRELLO_LICENSE_TOKEN_PATH = "secrets/does-not-exist.jwt";
+  const server = (await import("./index")).default;
+
+  const { headers, cleanUp } = await signedIn();
+  const body = (await (
+    await server.fetch(new Request("http://localhost/api/_meta", { headers }))
+  ).json()) as {
+    nav: { id: string; group?: string; parent?: string; icon?: string }[];
+  };
+
+  const crm = body.nav.find((n) => n.id === "crm");
+  expect(crm?.group).toBe("Sales");
+  expect(crm?.parent).toBeUndefined();
+  // The rail is icons alone, so a section entry without one is a blank square.
+  expect(crm?.icon).toBeTruthy();
+
+  const pages = body.nav.filter((n) => n.parent === "crm").map((n) => n.id);
+  expect(pages).toEqual([
+    "crm-dashboard",
+    "contacts",
+    "companies",
+    "deals",
+    "crm-settings",
+  ]);
+
+  // And selling stays together: quotes and the CRM in one section.
+  expect(body.nav.find((n) => n.id === "quotes")?.group).toBe("Sales");
+
+  await cleanUp();
 });

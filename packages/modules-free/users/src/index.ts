@@ -59,6 +59,7 @@ export default defineModule({
   register(ctx) {
     ctx.registerNav({
       id: "users",
+      icon: "users",
       label: "Users",
       order: 91,
       group: "Configure",

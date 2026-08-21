@@ -110,7 +110,7 @@ export function CrmDashboard() {
                   onClick={() =>
                     task.contactId &&
                     open({
-                      moduleId: "crm",
+                      moduleId: "contacts",
                       recordId: task.contactId,
                       title: task.title,
                     })
@@ -226,7 +226,7 @@ export function CrmDashboard() {
               type="button"
               className="text-xs underline"
               style={muted}
-              onClick={() => go("crm", "Contacts")}
+              onClick={() => go("contacts", "Contacts")}
             >
               {data.goingCold} going quiet
             </button>
@@ -243,7 +243,7 @@ export function CrmDashboard() {
                   style={{ borderColor: "var(--border)" }}
                   onClick={() =>
                     open({
-                      moduleId: "crm",
+                      moduleId: "contacts",
                       recordId: contact.id,
                       title: contact.name,
                     })

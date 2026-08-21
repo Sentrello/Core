@@ -59,6 +59,27 @@ export interface ModuleContext {
      */
     group?: string;
     /**
+     * The entry this one sits under, by id.
+     *
+     * The sidebar has two levels: a rail of sections, and inside a section a
+     * list of modules, each of which may expand into its own pages. A module
+     * with several screens — the CRM has five — registers one parent entry and
+     * its pages against it, rather than spilling five siblings into the
+     * section and burying every other module.
+     *
+     * A parent is not a screen. Opening one opens its first child, because a
+     * heading that goes nowhere when clicked is a heading people click twice.
+     */
+    parent?: string;
+    /**
+     * Which icon to draw, by name.
+     *
+     * The rail is icons alone, so a section without one is a blank square. The
+     * host maps the name; an unknown one falls back rather than failing, since
+     * a module built against a later host must not break an earlier one.
+     */
+    icon?: string;
+    /**
      * The permission this entry's screen needs.
      *
      * The routes behind it are guarded regardless; this decides whether

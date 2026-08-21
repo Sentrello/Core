@@ -24,6 +24,7 @@
     "jose": "^6.0.0"
   },
   "dependencies": {
+    "lucide-react": "^1.33.0",
     "sharp": "^0.35.3"
   }
 }
