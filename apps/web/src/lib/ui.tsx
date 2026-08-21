@@ -41,6 +41,32 @@ export function formatRate(basisPoints: number): string {
   return `${(basisPoints / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 }
 
+/**
+ * Whether this value is a calendar date rather than a moment in time.
+ *
+ * A due date, an expiry, a date of birth: somebody typed 10 September and
+ * meant 10 September everywhere. Those are stored as midnight UTC, and
+ * formatting midnight UTC in a timezone west of it shows the day before — an
+ * insurance certificate said to expire a day early, an invoice said to be due
+ * a day early, for every customer in our first market.
+ *
+ * A real timestamp landing on exactly midnight UTC is a one-in-86-million
+ * coincidence, and shows the same day it already showed to anyone at or east
+ * of UTC. The trade is worth it.
+ */
+function isCalendarDate(value: string | Date): boolean {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return true;
+  }
+  const d = typeof value === "string" ? new Date(value) : value;
+  return (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  );
+}
+
 export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;
@@ -54,9 +80,12 @@ export function formatDate(value: string | Date | null | undefined): string {
       : formats.dateFormat === "DMY"
         ? "en-GB"
         : "en-US";
+  const timeZone = isCalendarDate(value)
+    ? "UTC"
+    : formats.timezone || undefined;
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
-    ...(formats.timezone ? { timeZone: formats.timezone } : {}),
+    ...(timeZone ? { timeZone } : {}),
   }).format(d);
 }
 
