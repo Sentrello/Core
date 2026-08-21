@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type Contact, api } from "../lib/api";
+import { Avatar } from "../lib/avatar";
 import { useNavigation } from "../lib/navigation";
 import {
   Button,
@@ -93,11 +94,11 @@ export function Contacts() {
             : "People who fill in your forms or book with you land here automatically."}
         </Empty>
       ) : (
-        <Table headers={["Name", "Email", "Phone", "Type", ""]}>
+        <Table headers={["", "Name", "Email", "Phone", "Type", ""]}>
           {contacts.map((c) =>
             editing === c.id ? (
               <Row key={c.id}>
-                <td colSpan={5} className="py-2">
+                <td colSpan={6} className="py-2">
                   <EditContact
                     contact={c}
                     onDone={() => {
@@ -109,6 +110,19 @@ export function Contacts() {
               </Row>
             ) : (
               <Row key={c.id}>
+                {/*
+                  A face against the name. Atomic CRM's lists read quickly
+                  because every row has one — a page of text alone gives the
+                  eye nothing to catch on, and most people know a customer by
+                  sight before they know how their name is spelled.
+                */}
+                <td className="w-10 py-2">
+                  <Avatar
+                    src={`/api/crm/contacts/${c.id}/image`}
+                    name={c.name}
+                    size={32}
+                  />
+                </td>
                 <td className="py-2 font-medium">
                   {/* Opens the contact rather than an edit form. Editing a row
                       in place was fine when a contact was four fields; now

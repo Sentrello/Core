@@ -73,6 +73,8 @@ export type Meta = {
 export type Contact = {
   id: string;
   name: string;
+  /** Stored filename of the resized WebP, or null. Never the bytes. */
+  avatarPath?: string | null;
   email: string | null;
   phone: string | null;
   kind: string;

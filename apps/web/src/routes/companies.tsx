@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { Avatar } from "../lib/avatar";
+import { ImageUpload } from "../lib/image-upload";
 import { RelatedLink, useNavigation } from "../lib/navigation";
 import {
   Button,
@@ -28,6 +30,8 @@ interface Company {
   linkedinUrl: string | null;
   address: string | null;
   description: string | null;
+  /** Stored filename of the resized WebP, or null. Never the bytes. */
+  logoPath?: string | null;
 }
 
 interface Related {
@@ -107,9 +111,17 @@ export function Companies() {
           A company groups the people who work there and the deals in flight.
         </Empty>
       ) : (
-        <Table headers={["Name", "Sector", "Where", "Phone"]}>
+        <Table headers={["", "Name", "Sector", "Where", "Phone"]}>
           {companies.map((co) => (
             <Row key={co.id}>
+              <td className="w-10 py-2">
+                <Avatar
+                  src={`/api/crm/companies/${co.id}/image`}
+                  name={co.name}
+                  size={32}
+                  rounded="md"
+                />
+              </td>
               <td className="py-2 font-medium">
                 <button
                   type="button"
@@ -320,7 +332,16 @@ export function CompanyDetail() {
       <div className="space-y-4">
         <Card>
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-lg font-semibold">{company.name}</p>
+            <div className="flex items-center gap-3">
+              <ImageUpload
+                subject="companies"
+                id={company.id}
+                name={company.name}
+                hasImage={Boolean(company.logoPath)}
+                rounded="md"
+              />
+              <p className="text-lg font-semibold">{company.name}</p>
+            </div>
             <button
               type="button"
               className="text-sm underline"

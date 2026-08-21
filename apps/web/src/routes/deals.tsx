@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { Avatar } from "../lib/avatar";
 import { RelatedLink, useNavigation } from "../lib/navigation";
 import {
   Button,
@@ -104,14 +105,31 @@ function Column({
               background: "var(--surface-raised)",
             }}
           >
-            <RelatedLink
-              to={{ moduleId: "deals", recordId: d.id, title: d.name }}
-            >
-              {d.name}
-            </RelatedLink>
-            <div className="mt-0.5 text-xs" style={muted}>
-              {formatMoney(d.amountCents)}
-              {d.category ? ` · ${d.category}` : ""}
+            <div className="flex items-start gap-2">
+              {/*
+                Whose deal it is, at a glance. A column of names alone tells
+                you what is in play but not who with, which is the first thing
+                anybody looking at a pipeline wants to know.
+              */}
+              {d.companyId ? (
+                <Avatar
+                  src={`/api/crm/companies/${d.companyId}/image`}
+                  name={d.name}
+                  size={24}
+                  rounded="md"
+                />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <RelatedLink
+                  to={{ moduleId: "deals", recordId: d.id, title: d.name }}
+                >
+                  {d.name}
+                </RelatedLink>
+                <div className="mt-0.5 text-xs" style={muted}>
+                  {formatMoney(d.amountCents)}
+                  {d.category ? ` · ${d.category}` : ""}
+                </div>
+              </div>
             </div>
 
             {/* The same move, reachable without a mouse. */}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../lib/api";
+import { ImageUpload } from "../lib/image-upload";
 import {
   LabelledList,
   type Labelled as ListRow,
@@ -50,6 +51,7 @@ interface Related {
     phones: Labelled[] | null;
     linkedinUrl: string | null;
     companyId: string | null;
+    avatarPath: string | null;
   };
   company: { id: string; name: string } | null;
   deals: {
@@ -664,12 +666,21 @@ export function ContactDetail() {
       <div className="space-y-4">
         <Card>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <p className="text-lg font-semibold">{contact.name}</p>
-              <p className="text-sm" style={muted}>
-                {[contact.title, company?.name].filter(Boolean).join(" at ") ||
-                  "No job title"}
-              </p>
+            <div className="flex items-center gap-3">
+              <ImageUpload
+                subject="contacts"
+                id={contact.id}
+                name={contact.name}
+                hasImage={Boolean(contact.avatarPath)}
+              />
+              <div>
+                <p className="text-lg font-semibold">{contact.name}</p>
+                <p className="text-sm" style={muted}>
+                  {[contact.title, company?.name]
+                    .filter(Boolean)
+                    .join(" at ") || "No job title"}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Tags contactId={contact.id} attached={tags} />
