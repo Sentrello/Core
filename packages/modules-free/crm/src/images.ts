@@ -1,16 +1,13 @@
 /**
  * A picture on a contact or a company.
  *
- * Phones produce four-megapixel photographs and people upload them as avatars.
- * Storing that is a slow page for everybody forever, so every image is
- * re-encoded on the way in: rotated upright, scaled to fit, written as WebP.
- * What arrives is never what is stored.
+ * The work of turning an upload into something safe to serve — decode,
+ * straighten, shrink, re-encode as WebP — belongs to the platform rather than
+ * to the CRM, and lives in the module SDK. A shop keeps product photographs
+ * the same way, and two copies of that is how one of them loses the size check.
  *
- * That re-encoding is also the security boundary, and the reason it happens
- * even for a file that is already a small WebP. A `.png` that is really HTML,
- * an SVG carrying a script, a JPEG with a payload after the end marker — none
- * of them survive being decoded to pixels and encoded again. The bytes we
- * serve are bytes this process produced.
+ * What is left here is the part that is about contacts and companies: which
+ * column each keeps its picture in, and where on disk they go.
  */
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -21,87 +18,18 @@ import {
 } from "@sentrello/auth/hono";
 import { and, db, eq, schema } from "@sentrello/db";
 import type { ModuleContext } from "@sentrello/module-sdk";
-import sharp from "sharp";
+import {
+  AVATAR_RULES,
+  type ProcessedImage,
+  processImage,
+} from "@sentrello/module-sdk";
 
 /** Beside the note attachments, under the data directory. */
 const imagesDir = () =>
   join(resolve(process.env.SENTRELLO_DATA_DIR ?? "/data"), "crm-images");
 
-/**
- * Five megabytes in, one small WebP out.
- *
- * The cap is on what may be *uploaded*, because the work of decoding happens
- * before any resizing can. A phone photo is two to five megabytes; anything
- * far beyond that is somebody uploading a document by mistake.
- */
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-/**
- * 512 on the long edge.
- *
- * Twice the largest size either of these is ever drawn at, so it stays sharp on
- * a retina screen and nowhere near the size of the original. Aspect ratio is
- * kept — a squashed logo looks worse than a small one — and a picture already
- * smaller than this is left at its own size rather than blown up.
- */
-const MAX_EDGE = 512;
-
-/**
- * Raster formats only, and deliberately not SVG.
- *
- * SVG is a document format that can carry scripts and external references, and
- * rasterising one means handing an untrusted document to a parser with a
- * history of surprises. Nobody uploads a vector as their avatar.
- */
-const ACCEPTED = new Set(["jpeg", "jpg", "png", "webp", "gif", "avif", "heif"]);
-
-export interface ProcessedImage {
-  bytes: Uint8Array;
-  width: number;
-  height: number;
-}
-
-/**
- * Decode, straighten, shrink, re-encode.
- *
- * Exported so it can be tested without a database or a session: this is where
- * a bad file has to be rejected, and it is worth being able to prove that on
- * its own.
- */
-export async function processImage(input: Uint8Array): Promise<ProcessedImage> {
-  if (input.byteLength === 0) throw new RangeError("that file is empty");
-  if (input.byteLength > MAX_IMAGE_BYTES) {
-    throw new RangeError(
-      `images must be under ${Math.floor(MAX_IMAGE_BYTES / 1024 / 1024)}MB`,
-    );
-  }
-
-  let format: string | undefined;
-  try {
-    format = (await sharp(input).metadata()).format;
-  } catch {
-    throw new RangeError("that does not look like an image");
-  }
-  if (!format || !ACCEPTED.has(format)) {
-    throw new RangeError(
-      `${format ?? "that file"} cannot be used as a picture here`,
-    );
-  }
-
-  const output = await sharp(input)
-    // Phone cameras record orientation in EXIF rather than in the pixels. Skip
-    // this and every photograph taken sideways is stored sideways.
-    .rotate()
-    .resize(MAX_EDGE, MAX_EDGE, { fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 82 })
-    .toBuffer({ resolveWithObject: true });
-
-  return {
-    bytes: new Uint8Array(output.data),
-    width: output.info.width,
-    height: output.info.height,
-  };
-}
+/** What a face or a logo may weigh on the way in. */
+export const MAX_IMAGE_BYTES = AVATAR_RULES.maxBytes;
 
 /**
  * Reading the stored name off either row.

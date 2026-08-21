@@ -170,7 +170,9 @@ export interface SentrelloModule {
   register(ctx: ModuleContext): void;
 }
 
+export * from "./images";
 export * from "./public-endpoints";
+export * as secrets from "./secrets";
 export * from "./stripe-signature";
 
 /**

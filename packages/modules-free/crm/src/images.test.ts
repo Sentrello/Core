@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { processImage } from "@sentrello/module-sdk";
 import sharp from "sharp";
-import { MAX_IMAGE_BYTES, processImage } from "./images";
+import { MAX_IMAGE_BYTES } from "./images";
 
 const jpeg = async (width: number, height: number) =>
   new Uint8Array(

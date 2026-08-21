@@ -12,6 +12,11 @@ export {
   index,
   integer,
   jsonb,
+  // A module with tables of its own may keep them in its own Postgres schema.
+  // Two modules can want the same noun — Sentrello's SubShop and a customer's
+  // Shop both have products — and `shop.products` says which is which better
+  // than a longer prefix would.
+  pgSchema,
   pgTable,
   text,
   timestamp,
