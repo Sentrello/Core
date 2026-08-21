@@ -8,6 +8,7 @@ import { defineModule } from "@sentrello/module-sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { registerAttachments } from "./attachments";
 import { registerCrmDashboard } from "./dashboard";
+import { registerCrmImages } from "./images";
 
 /**
  * Org-scoped CRUD for one table. Every query carries the organizationId filter
@@ -922,6 +923,7 @@ export default defineModule({
     }
 
     registerCrmDashboard(ctx);
+    registerCrmImages(ctx);
     for (const resource of Object.keys(tables) as (keyof typeof tables)[]) {
       crud(ctx, resource);
     }

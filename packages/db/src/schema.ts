@@ -42,6 +42,8 @@ export const companies = pgTable(
     organizationId: text("organization_id").notNull(),
     name: text("name").notNull(),
     website: text("website"),
+    /** The company's mark, stored exactly as a contact's avatar is. */
+    logoPath: text("logo_path"),
     sector: text("sector"),
     /** Headcount band, not an exact number — nobody knows the exact number. */
     size: integer("size"),
@@ -79,6 +81,14 @@ export const contacts = pgTable(
     firstName: text("first_name"),
     lastName: text("last_name"),
     title: text("title"),
+    /**
+     * A face against the name.
+     *
+     * The stored path of a resized WebP under the data directory, never the
+     * bytes and never the uploaded filename — same rule the note attachments
+     * follow, for the same reasons.
+     */
+    avatarPath: text("avatar_path"),
     linkedinUrl: text("linkedin_url"),
     /** Whose contact this is — a platform user. */
     ownerId: text("owner_id"),
