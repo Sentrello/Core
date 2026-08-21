@@ -26,7 +26,13 @@ export interface NavEntry {
  * job. A section the host has never heard of sorts to the end rather than
  * being dropped — a module may name its own.
  */
-const GROUP_ORDER = ["Sales", "Money", "Work", "People", "Configure"];
+/**
+ * CRM first: it is the section people open most, and it is the one the whole
+ * platform hangs off — a contact is what an invoice, a job and a booking are
+ * all eventually about. "Sales" keeps the things that sell rather than the
+ * people they are sold to: the Shop, and Make Deal.
+ */
+const GROUP_ORDER = ["CRM", "Sales", "Money", "Work", "People", "Configure"];
 
 export function sections(
   nav: NavEntry[],

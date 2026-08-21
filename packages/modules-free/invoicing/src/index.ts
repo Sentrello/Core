@@ -103,11 +103,13 @@ export default defineModule({
       group: "Money",
       requires: { invoicing: ["read"] },
     });
+    // With the CRM in its own section, a quote belongs beside the invoice it
+    // becomes rather than beside the contact it is for.
     ctx.registerNav({
       id: "quotes",
       label: "Quotes",
       order: 19,
-      group: "Sales",
+      group: "Money",
       requires: { invoicing: ["read"] },
     });
     for (const p of ["read", "create", "update", "delete", "send"]) {

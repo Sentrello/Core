@@ -7,6 +7,7 @@ import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, desc, eq } from "drizzle-orm";
 import { registerAttachments } from "./attachments";
+import { registerCrmDashboard } from "./dashboard";
 
 /**
  * Org-scoped CRUD for one table. Every query carries the organizationId filter
@@ -868,11 +869,26 @@ export default defineModule({
   id: "crm",
   tier: "free",
   register(ctx) {
+    /**
+     * The CRM's own section, holding the CRM and nothing else.
+     *
+     * It used to be a "Sales" group that also carried Quotes, Shop and Make
+     * Deal — three things that sell but are not the book of customers. Mixing
+     * them meant the CRM had no home of its own, and somebody looking for a
+     * contact scanned past an invoice to find it.
+     */
+    ctx.registerNav({
+      id: "crm-dashboard",
+      label: "Dashboard",
+      order: 9,
+      group: "CRM",
+      requires: { crm: ["read"] },
+    });
     ctx.registerNav({
       id: "crm",
       label: "Contacts",
       order: 10,
-      group: "Sales",
+      group: "CRM",
       // The book of customers is not everybody's to open.
       requires: { crm: ["read"] },
     });
@@ -880,7 +896,7 @@ export default defineModule({
       id: "companies",
       label: "Companies",
       order: 11,
-      group: "Sales",
+      group: "CRM",
       requires: { crm: ["read"] },
     });
     // The pipeline. Named Deals as Atomic CRM has it; the quote-to-payment
@@ -889,12 +905,23 @@ export default defineModule({
       id: "deals",
       label: "Deals",
       order: 12,
-      group: "Sales",
+      group: "CRM",
       requires: { crm: ["read"] },
+    });
+    ctx.registerNav({
+      id: "crm-settings",
+      label: "Settings",
+      order: 13,
+      group: "CRM",
+      // Stages, tags and what a deal is worth by default: configuration of the
+      // CRM itself, which is not the same authority as reading it.
+      requires: { crm: ["update"] },
     });
     for (const p of ["read", "create", "update", "delete"]) {
       ctx.registerPermission(`crm:${p}`);
     }
+
+    registerCrmDashboard(ctx);
     for (const resource of Object.keys(tables) as (keyof typeof tables)[]) {
       crud(ctx, resource);
     }

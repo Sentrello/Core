@@ -1,9 +1,9 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { auth, roles } from "@sentrello/auth";
 import { signUpAsOwner } from "@sentrello/auth/testing";
 import { db, schema } from "@sentrello/db";
 import { isEnabled } from "@sentrello/db/modules";
-import { eq } from "@sentrello/db/orm";
+import { eq, like } from "@sentrello/db/orm";
 import { type SentrelloEnv, defineModule } from "@sentrello/module-sdk";
 import { Hono } from "hono";
 import { resolveLicense } from "./license";
@@ -71,6 +71,41 @@ async function signedIn(): Promise<{
     },
   };
 }
+
+/**
+ * A safety net, because one missed cleanup poisons other files.
+ *
+ * Every sign-in here creates an organization — the real first-run path does,
+ * so a test owner without one is a person who cannot exist. But an
+ * organization left behind makes the instance look *claimed*, and the
+ * bootstrap tests in another file then fail with 409s that have nothing to do
+ * with them. That happened. Per-test cleanup still runs; this catches whatever
+ * it misses.
+ */
+afterAll(async () => {
+  const strays = await db
+    .select({ id: schema.organizations.id })
+    .from(schema.organizations)
+    .where(like(schema.organizations.slug, "boot-%"));
+  for (const org of strays) {
+    await db
+      .delete(schema.member)
+      .where(eq(schema.member.organizationId, org.id));
+    await db
+      .delete(schema.organizations)
+      .where(eq(schema.organizations.id, org.id));
+  }
+
+  const users = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(like(schema.user.email, "boot-%@x.test"));
+  for (const u of users) {
+    await db.delete(schema.session).where(eq(schema.session.userId, u.id));
+    await db.delete(schema.account).where(eq(schema.account.userId, u.id));
+    await db.delete(schema.user).where(eq(schema.user.id, u.id));
+  }
+});
 
 const freeGate = () => false;
 const proGate = (need: { tier?: "pro"; module?: string }) =>
@@ -283,9 +318,11 @@ test("/api/_meta exposes only the nav the loaded modules registered", async () =
   // sorted by the order each module registered, not by load order
   expect(body.nav.map((n) => n.id)).toEqual([
     "dashboard",
+    "crm-dashboard",
     "crm",
     "companies",
     "deals",
+    "crm-settings",
     "quotes",
     "invoicing",
     "forms",
