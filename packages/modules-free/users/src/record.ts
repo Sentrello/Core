@@ -21,7 +21,16 @@ export type SecurityAction =
   | "sessions.revoked"
   | "member.removed"
   | "member.invited"
-  | "invitation.cancelled";
+  | "invitation.cancelled"
+  | "group.created"
+  | "group.changed"
+  | "group.deleted"
+  | "group.joined"
+  | "group.left"
+  | "policy.changed"
+  | "session.revoked"
+  | "sso.connected"
+  | "sso.disconnected";
 
 /** What each one says in a sentence, for the screen and for support. */
 export const ACTION_TEXT: Record<SecurityAction, string> = {
@@ -32,6 +41,15 @@ export const ACTION_TEXT: Record<SecurityAction, string> = {
   "member.removed": "removed",
   "member.invited": "invited",
   "invitation.cancelled": "withdrew the invitation to",
+  "group.created": "created the group",
+  "group.changed": "changed what is granted by",
+  "group.deleted": "deleted the group",
+  "group.joined": "added to a group",
+  "group.left": "took out of a group",
+  "policy.changed": "changed the sign-in rules for",
+  "session.revoked": "signed out a device of",
+  "sso.connected": "connected sign-in for",
+  "sso.disconnected": "disconnected sign-in for",
 };
 
 export async function record(input: {

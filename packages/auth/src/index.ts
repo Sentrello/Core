@@ -1,3 +1,4 @@
+import { sso } from "@better-auth/sso";
 import { db, schema } from "@sentrello/db";
 import { asc, eq } from "@sentrello/db/orm";
 import { emailAdapter } from "@sentrello/email";
@@ -116,6 +117,25 @@ export const auth = betterAuth({
      * running this sees "Sentrello" beside the account it belongs to.
      */
     twoFactor({ issuer: process.env.SENTRELLO_ISSUER ?? "Sentrello" }),
+    /**
+     * Signing in with the account a business already has.
+     *
+     * A firm on Google Workspace or Microsoft 365 has decided who works there
+     * and who has left; asking them to keep a second list here is asking them
+     * to forget to remove somebody. OpenID Connect covers both, and SAML
+     * covers the identity providers that only speak it.
+     *
+     * A person who arrives through it joins as a member and nothing more.
+     * Roles are given here, by somebody who can see what they mean — an
+     * identity provider says who somebody is, not what they may do in the
+     * books.
+     */
+    sso({
+      organizationProvisioning: { disabled: false, defaultRole: "member" },
+      // Every sign-in, so somebody whose name or email changed at their
+      // employer is not two people here.
+      provisionUserOnEveryLogin: true,
+    }),
     organization({
       ac,
       roles,

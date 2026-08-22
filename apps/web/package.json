@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@better-auth/sso": "1.6.26",
     "@sentrello/auth": "*",
     "@tanstack/react-query": "^5.62.0",
     "better-auth": "^1.6.0",

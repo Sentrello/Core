@@ -16,6 +16,8 @@ import {
   formatDate,
   muted,
 } from "../lib/ui";
+import { Groups, SignInRules } from "./user-groups";
+import { SsoConnections } from "./user-sso";
 
 /**
  * Who is on this instance, and what each of them may do.
@@ -92,10 +94,31 @@ interface Person {
   memberId: string;
   name: string;
   email: string;
+  /** Everything they hold: their own role and the roles of their groups. */
   role: string;
+  /** The role given to them directly, which is the one a screen may change. */
+  baseRole: string;
+  groups: string[];
   twoFactorEnabled: boolean;
+  twoFactorRequired: boolean;
   lastSeenAt: string | null;
   you: boolean;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  description: string | null;
+  roles: string[];
+  members: { userId: string; name: string; email: string }[];
+}
+
+interface Device {
+  id: string;
+  device: string;
+  ipAddress: string | null;
+  updatedAt: string;
+  current: boolean;
 }
 
 interface Invitation {
@@ -322,21 +345,32 @@ function People({ custom }: { custom: OrgRole[] }) {
               {p.you ? (
                 // Changing your own role is how an owner locks the business
                 // out of its own instance, and nobody else can undo it.
-                <span style={muted}>{p.role}</span>
+                <span style={muted}>{p.baseRole}</span>
               ) : (
                 <Select
-                  value={p.role}
+                  value={p.baseRole}
                   onChange={(e) =>
                     setRole.mutate({ userId: p.userId, role: e.target.value })
                   }
                 >
-                  {[...new Set([p.role, ...roleNames])].map((r) => (
+                  {[...new Set([p.baseRole, ...roleNames])].map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
                   ))}
                 </Select>
               )}
+              {p.groups.length > 0 ? (
+                // What a group grants is not editable here on purpose: it is
+                // changed for the group, not for one person inside it.
+                <div className="text-xs" style={muted}>
+                  and, through {p.groups.join(", ")}:{" "}
+                  {p.role
+                    .split(",")
+                    .filter((r) => r && r !== p.baseRole)
+                    .join(", ") || "nothing extra"}
+                </div>
+              ) : null}
             </td>
             <td>
               {p.twoFactorEnabled ? (
@@ -352,6 +386,12 @@ function People({ custom }: { custom: OrgRole[] }) {
                 >
                   on — turn off
                 </button>
+              ) : p.twoFactorRequired ? (
+                // The rules say somebody with their roles must have one. Said
+                // here so an administrator can see who is still without it.
+                <span style={{ color: "var(--color-warning)" }}>
+                  off — required
+                </span>
               ) : (
                 <span style={muted}>off</span>
               )}
@@ -433,6 +473,28 @@ function People({ custom }: { custom: OrgRole[] }) {
   );
 }
 
+/**
+ * Groups and sign-in rules, under the people they apply to.
+ *
+ * Both need the list of people, which the People card already has — so this
+ * asks for it again rather than threading it through, and the query cache
+ * makes that free.
+ */
+function GroupsAndRules() {
+  const data = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api<{ people: Person[] }>("/api/users"),
+  });
+
+  return (
+    <>
+      <Groups people={data.data?.people ?? []} />
+      <SignInRules />
+      <SsoConnections />
+    </>
+  );
+}
+
 export function Users() {
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -479,6 +541,7 @@ export function Users() {
   return (
     <div className="space-y-4">
       <People custom={custom.data ?? []} />
+      <GroupsAndRules />
 
       <Card>
         <p className="font-medium">Roles that come with Sentrello</p>

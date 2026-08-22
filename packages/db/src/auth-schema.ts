@@ -129,7 +129,22 @@ export const member = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /**
+     * What this person may do, as Better Auth reads it.
+     *
+     * Comma separated, and computed rather than typed: it is the person's own
+     * role plus the roles of every group they are in. Better Auth splits it
+     * and allows a permission if any of the roles grants it, so every check in
+     * the platform keeps working without knowing groups exist.
+     */
     role: text("role").default("member").notNull(),
+    /**
+     * The role this person was given directly, apart from any group.
+     *
+     * Kept because `role` is derived: without it, taking somebody out of a
+     * group could not tell which of their roles was theirs to begin with.
+     */
+    baseRole: text("base_role"),
     createdAt: timestamp("created_at").notNull(),
   },
   (table) => [
@@ -233,3 +248,37 @@ export const twoFactor = pgTable(
   },
   (table) => [index("two_factor_user_id_idx").on(table.userId)],
 );
+
+/**
+ * An identity provider a business signs in through.
+ *
+ * Better Auth's SSO plugin owns these rows; the shape is its own, and it is
+ * written here because this platform keeps its schema in one place rather than
+ * letting a library create tables behind it.
+ *
+ * `oidcConfig` and `samlConfig` are JSON as text, and they contain the client
+ * secret for the connection. That is the library's design, not ours — it is
+ * noted in the module's docs as the one credential on the instance not sealed
+ * the way the payment keys are.
+ */
+export const ssoProvider = pgTable(
+  "sso_provider",
+  {
+    id: text("id").primaryKey(),
+    /** The identity provider's own issuer URL. */
+    issuer: text("issuer").notNull(),
+    oidcConfig: text("oidc_config"),
+    samlConfig: text("saml_config"),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    /** How a sign-in names this connection. Unique across the instance. */
+    providerId: text("provider_id").notNull().unique(),
+    organizationId: text("organization_id"),
+    /** The email domain that arrives here — `example.com`. */
+    domain: text("domain").notNull(),
+  },
+  (table) => [
+    index("sso_provider_organizationId_idx").on(table.organizationId),
+    index("sso_provider_domain_idx").on(table.domain),
+  ],
+);
+

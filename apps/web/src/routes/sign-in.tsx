@@ -15,6 +15,35 @@ export function SignIn() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+
+    /**
+     * Businesses whose email is somewhere else sign in there instead.
+     *
+     * Asked before the password is sent rather than after it fails: somebody
+     * at a firm on Google Workspace has no password here, and being told
+     * "wrong password" for one they never set is the worst possible answer.
+     * The check says only yes or no — never which provider, or whose.
+     */
+    const viaProvider = await fetch("/api/users/sso/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+      .then((r) => (r.ok ? r.json() : { sso: false }))
+      .catch(() => ({ sso: false }));
+
+    if ((viaProvider as { sso?: boolean }).sso) {
+      const { error: ssoError } = await authClient.signIn.sso({
+        email,
+        callbackURL: window.location.origin,
+      });
+      setBusy(false);
+      if (ssoError) {
+        setError(ssoError.message ?? "Could not reach your sign-in provider");
+      }
+      return;
+    }
+
     const { data, error } = await authClient.signIn.email({ email, password });
     setBusy(false);
     if (error) {

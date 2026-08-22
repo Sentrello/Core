@@ -1,3 +1,4 @@
+import { ssoClient } from "@better-auth/sso/client";
 import { ac, roles } from "@sentrello/auth/permissions";
 import {
   organizationClient,
@@ -17,6 +18,11 @@ export const authClient = createAuthClient({
     // in place, which is also what somebody halfway through signing in
     // expects to happen.
     twoFactorClient(),
+    // Sign-in through the account a business already has. The sign-in form
+    // asks the server whether an address belongs to a connected domain before
+    // it sends a password, so this only ever runs when there is somewhere to
+    // send somebody.
+    ssoClient(),
     // dynamicAccessControl here as well as on the server: without it the
     // client has no createRole/listRoles at all, and the roles screen has
     // nothing to call.

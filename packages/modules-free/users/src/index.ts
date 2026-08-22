@@ -7,8 +7,16 @@ import {
 import { db, schema } from "@sentrello/db";
 import { defineModule } from "@sentrello/module-sdk";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { registerGroups } from "./groups";
 import { temporaryPassword } from "./password";
 import { ACTION_TEXT, recent, record } from "./record";
+import {
+  applyRoles,
+  twoFactorRequired as needsTwoFactor,
+  policyFor,
+} from "./roles";
+import { registerSessions } from "./sessions";
+import { registerSso } from "./sso";
 
 /**
  * Who is on this instance, and what each of them may do.
@@ -31,8 +39,15 @@ interface Person {
   memberId: string;
   name: string;
   email: string;
+  /** Everything they hold, own role and group roles together. */
   role: string;
+  /** The role given to them directly, apart from any group. */
+  baseRole: string;
+  /** The groups they are in, which is where the rest of their roles come from. */
+  groups: string[];
   twoFactorEnabled: boolean;
+  /** Whether the business's rules say they must have a second factor. */
+  twoFactorRequired: boolean;
   /** The last time they actually used it, or null if they never have. */
   lastSeenAt: Date | null;
   /** Whether this is the person doing the looking. */
@@ -68,6 +83,10 @@ export default defineModule({
       requires: { settings: ["update"] },
     });
 
+    registerGroups(ctx);
+    registerSessions(ctx);
+    registerSso(ctx);
+
     ctx.app.get(
       "/api/users",
       requireSession(),
@@ -81,6 +100,7 @@ export default defineModule({
             memberId: schema.member.id,
             userId: schema.member.userId,
             role: schema.member.role,
+            baseRole: schema.member.baseRole,
             joinedAt: schema.member.createdAt,
           })
           .from(schema.member)
@@ -124,19 +144,42 @@ export default defineModule({
           if (!lastSeen.has(s.userId)) lastSeen.set(s.userId, s.updatedAt);
         }
 
+        // Group membership for everybody at once: one query rather than one
+        // per person, on a screen a business opens to see everybody.
+        const groupRows = userIds.length
+          ? await db
+              .select({
+                userId: schema.userGroupMembers.userId,
+                name: schema.userGroups.name,
+              })
+              .from(schema.userGroupMembers)
+              .innerJoin(
+                schema.userGroups,
+                eq(schema.userGroups.id, schema.userGroupMembers.groupId),
+              )
+              .where(eq(schema.userGroupMembers.organizationId, orgId))
+          : [];
+        const policy = await policyFor(orgId);
+
         const people: Person[] = members.map((m) => {
           const user = byId.get(m.userId);
+          const held = m.role.split(",").filter(Boolean);
           return {
             memberId: m.memberId,
             userId: m.userId,
             name: user?.name ?? "",
             email: user?.email ?? "",
             role: m.role,
+            baseRole: m.baseRole ?? held[0] ?? "member",
+            groups: groupRows
+              .filter((g) => g.userId === m.userId)
+              .map((g) => g.name),
             // Both, because a half-finished setup leaves a secret with the
             // flag still off, and an administrator looking at this screen
             // wants to know there is something to revoke.
             twoFactorEnabled:
               Boolean(user?.twoFactorEnabled) || hasSecret.has(m.userId),
+            twoFactorRequired: needsTwoFactor(policy, held),
             lastSeenAt: lastSeen.get(m.userId) ?? null,
             you: m.userId === session.user.id,
           };
@@ -219,17 +262,29 @@ export default defineModule({
           .where(eq(schema.member.id, member.id))
           .limit(1);
 
+        // Through Better Auth first, so it decides whether this role may be
+        // granted at all — then recorded as the person's own role and the
+        // effective set recomputed, because groups may grant more.
         await auth.api.updateMemberRole({
           body: { memberId: member.id, role, organizationId: orgId },
           headers: c.req.raw.headers,
         });
+        await db
+          .update(schema.member)
+          .set({ baseRole: role })
+          .where(eq(schema.member.id, member.id));
+        const effective = await applyRoles(orgId, userId);
 
         await record({
           organizationId: orgId,
           actor: session.user,
           subject: await subjectOf(userId),
           action: "role.changed",
-          detail: { from: before?.role ?? null, to: role },
+          detail: {
+            from: before?.role ?? null,
+            to: role,
+            effective: effective.all,
+          },
         });
         return c.json({ ok: true });
       },

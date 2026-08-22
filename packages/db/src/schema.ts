@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -696,3 +697,76 @@ export const securityEvents = pgTable(
     index("security_events_at_idx").on(t.at),
   ],
 );
+
+/**
+ * A group of people who share a job.
+ *
+ * Keycloak's idea, and the right one: an administrator does not want to think
+ * about permissions one person at a time. "The office" or "the fitters" is how
+ * a business already talks about itself, and a new starter joins a group
+ * rather than having six checkboxes copied from somebody similar.
+ *
+ * A group carries roles rather than permissions. Roles are where a permission
+ * set is named and reasoned about; a group is who holds them.
+ */
+export const userGroups = pgTable(
+  "user_groups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** Role names, built-in or one the business defined for itself. */
+    roles: jsonb("roles").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("user_groups_org_idx").on(t.organizationId),
+    // Two groups called "Office" is two groups nobody can tell apart, and the
+    // one somebody adds a new starter to is a coin toss.
+    unique("user_groups_unique_name").on(t.organizationId, t.name),
+  ],
+);
+
+export const userGroupMembers = pgTable(
+  "user_group_members",
+  {
+    groupId: uuid("group_id").notNull(),
+    userId: text("user_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+    addedBy: text("added_by"),
+  },
+  (t) => [
+    unique("user_group_members_unique").on(t.groupId, t.userId),
+    index("user_group_members_user_idx").on(t.organizationId, t.userId),
+  ],
+);
+
+/**
+ * The rules a business sets for how people get in.
+ *
+ * One row per organization. Keycloak calls these required actions and
+ * policies; for a business of under twenty people the useful ones are: who
+ * must have a second factor, how long a session lasts, and how short a
+ * password may be.
+ */
+export const securityPolicy = pgTable("security_policy", {
+  organizationId: text("organization_id").primaryKey(),
+  /**
+   * Roles that must have two-factor authentication.
+   *
+   * Empty means nobody is forced. The point of naming roles rather than
+   * everybody is that the person who can move money is not the person who
+   * clocks in on a shared tablet.
+   */
+  requireTwoFactorFor: jsonb("require_two_factor_for")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  /** How long somebody stays signed in, in days. Null leaves the default. */
+  sessionDays: integer("session_days"),
+  /** The shortest password this business will accept. */
+  minPasswordLength: integer("min_password_length").notNull().default(12),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

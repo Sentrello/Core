@@ -12,11 +12,12 @@
     "./signup-policy": "./src/signup-policy.ts"
   },
   "dependencies": {
-    "better-auth": "^1.6.0",
+    "@better-auth/sso": "1.6.26",
     "@sentrello/db": "*",
-    "@sentrello/module-sdk": "*",
-    "hono": "^4.6.0",
     "@sentrello/email": "*",
+    "@sentrello/module-sdk": "*",
+    "better-auth": "^1.6.0",
+    "hono": "^4.6.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
