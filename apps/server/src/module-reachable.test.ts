@@ -42,7 +42,13 @@ const modules = readdirSync(join(root, "packages/modules-free")).filter(
  * comes back clean with a dead feature in it, which is the one way this test
  * can do harm.
  */
-const CALLED_BY_SOMETHING_ELSE: Record<string, string> = {};
+const CALLED_BY_SOMETHING_ELSE: Record<string, string> = {
+  // Kept working on purpose. Its own comment: the endpoint predates the
+  // module and is what a customer's own scripts call, so it stays rather than
+  // becoming a second way to write the books. The screens use
+  // `/api/transactions`.
+  "/api/expenses": "a customer's own scripts, from before the module",
+};
 
 /**
  * Built, reachable from nothing, and not yet fixed.

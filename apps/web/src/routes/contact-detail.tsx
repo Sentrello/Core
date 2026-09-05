@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { type Company, type Contact, api } from "../lib/api";
+import { type Company, type Contact, type Meta, api } from "../lib/api";
 import { useCrmSettings } from "../lib/crm-settings";
 import { CustomValues } from "../lib/custom-fields";
 import { Icon } from "../lib/icons";
@@ -539,6 +539,60 @@ export function HistoryPanel({
     enabled: query !== "",
   });
 
+  // Already in the cache from the shell's own fetch, so this costs no request.
+  const tier = useQuery({
+    queryKey: ["meta"],
+    queryFn: () => api<Meta>("/api/_meta"),
+  }).data?.tier;
+
+  /**
+   * The money half, which the Free history does not have.
+   *
+   * `/api/crm/history` reads notes, activities, tasks and deals. What the
+   * person was billed and what they paid is the other half of what the plan
+   * calls a 360° timeline, and it lives behind a Pro route that nothing has
+   * ever called — so the panel has been three-quarters of itself since it was
+   * written, on instances paying for the other quarter.
+   *
+   * Asked for only on Pro, and only for a contact: the route is per contact,
+   * and on Free there is nothing behind it but a 404 on every contact opened.
+   */
+  const money = useQuery({
+    queryKey: ["contact-timeline", contactId],
+    queryFn: () =>
+      api<{
+        timeline: {
+          kind: string;
+          at: string;
+          id: string;
+          summary: string | null;
+          amountCents?: number;
+        }[];
+      }>(`/api/contacts/${contactId}/timeline`),
+    enabled: Boolean(contactId) && tier === "pro",
+  });
+
+  /**
+   * Merged into one column rather than shown beside it, because "what has gone
+   * on with these people" is one question and an invoice raised the day after
+   * a call is the answer to it.
+   */
+  const entries = [
+    ...(data?.history ?? []),
+    ...(money.data?.timeline ?? [])
+      .filter((row) => row.kind === "invoice" || row.kind === "payment")
+      .map((row) => ({
+        at: row.at,
+        kind: row.kind,
+        title:
+          row.kind === "invoice"
+            ? `Invoice ${row.summary ?? ""}`.trim()
+            : `Paid${row.summary ? ` by ${row.summary}` : ""}`,
+        detail:
+          row.amountCents === undefined ? null : formatMoney(row.amountCents),
+      })),
+  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
   const icon: Record<string, string> = {
     note: "clipboard",
     email: "mail",
@@ -547,6 +601,8 @@ export function HistoryPanel({
     task: "check-square",
     deal: "handshake",
     contact: "contact",
+    invoice: "file-text",
+    payment: "wallet",
   };
 
   return (
@@ -554,13 +610,13 @@ export function HistoryPanel({
       <p className="mb-2 font-medium">History</p>
       {isLoading ? (
         <Loading />
-      ) : (data?.history.length ?? 0) === 0 ? (
+      ) : entries.length === 0 ? (
         <p className="text-sm" style={muted}>
           Nothing yet. Notes, emails and finished tasks all land here.
         </p>
       ) : (
         <ul className="space-y-2">
-          {data?.history.map((entry) => (
+          {entries.map((entry) => (
             <li
               key={`${entry.at}-${entry.title}`}
               className="flex gap-2 text-sm"

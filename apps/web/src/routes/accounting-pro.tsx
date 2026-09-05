@@ -603,6 +603,9 @@ export function Banking() {
   const [fromAccountId, setFrom] = useState("");
   const [toAccountId, setTo] = useState("");
   const [amount, setAmount] = useState("");
+  const [markAccountId, setMarkAccountId] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
 
   const rows = useQuery({
     queryKey: ["bank-transactions"],
@@ -619,6 +622,38 @@ export function Banking() {
   const accounts = useQuery({
     queryKey: ["accounts"],
     queryFn: () => api<{ accounts: Account[] }>("/api/accounts"),
+  });
+  /**
+   * Which accounts are actually bank accounts.
+   *
+   * Statements could be imported and transactions matched, and nothing could
+   * say *which* accounts the business banks with — the route for it has
+   * existed, gated behind the licence, with nothing calling it. A business
+   * that had not seeded one was reconciling against a list it could not add
+   * to.
+   */
+  const bankAccounts = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: () => api<{ bankAccounts: Account[] }>("/api/bank-accounts"),
+  });
+
+  const markAsBank = useMutation({
+    mutationFn: () =>
+      api("/api/bank-accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          accountId: markAccountId,
+          bankName: bankName || null,
+          accountNumber,
+        }),
+      }),
+    onSuccess: () => {
+      setMarkAccountId("");
+      setBankName("");
+      setAccountNumber("");
+      qc.invalidateQueries({ queryKey: ["bank-accounts"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+    },
   });
 
   const refresh = () => {
@@ -705,6 +740,69 @@ export function Banking() {
           imported as nothing.
         </p>
         {importCsv.error ? <ErrorNote error={importCsv.error} /> : null}
+      </Card>
+
+      <Card>
+        <p className="mb-2 font-medium text-sm">The accounts you bank with</p>
+        {(bankAccounts.data?.bankAccounts ?? []).length === 0 ? (
+          <p className="mb-3 text-sm" style={muted}>
+            None yet. Say which of your asset accounts is a bank account and
+            imported statements can be reconciled against it.
+          </p>
+        ) : (
+          <ul className="mb-3 space-y-1 text-sm">
+            {(bankAccounts.data?.bankAccounts ?? []).map((account) => (
+              <li key={account.id}>
+                {account.code} {account.name}
+                {account.bankName ? (
+                  <span style={muted}> · {account.bankName}</span>
+                ) : null}
+                {account.bankAccountLast4 ? (
+                  <span style={muted}> ····{account.bankAccountLast4}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_8rem_auto]">
+          <Field label="Account">
+            <Select
+              value={markAccountId}
+              onChange={(e) => setMarkAccountId(e.target.value)}
+            >
+              <option value="">Choose</option>
+              {assets
+                .filter((a) => !a.isBank)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code} {a.name}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <Field label="Bank">
+            <Input
+              value={bankName}
+              placeholder="Barclays"
+              onChange={(e) => setBankName(e.target.value)}
+            />
+          </Field>
+          <Field label="Account number" hint="Only the last four are kept.">
+            <Input
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button
+              onClick={() => markAsBank.mutate()}
+              disabled={!markAccountId || markAsBank.isPending}
+            >
+              {markAsBank.isPending ? "Saving…" : "It is a bank account"}
+            </Button>
+          </div>
+        </div>
+        {markAsBank.error ? <ErrorNote error={markAsBank.error} /> : null}
       </Card>
 
       <Card>

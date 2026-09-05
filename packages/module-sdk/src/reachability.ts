@@ -133,7 +133,19 @@ export function requestedPaths(files: string[]): string[][] {
   // Up to the closing quote or backtick: a template literal's `${…}` is part
   // of the path, and `pathShape` is what makes sense of it.
   for (const m of text.matchAll(/["`'](\/api\/[^"`'\n]*)/g)) {
-    if (m[1]) asked.push(pathShape(m[1]));
+    if (!m[1]) continue;
+    const shape = pathShape(m[1]);
+    /**
+     * `/api/${resource}` on its own says nothing about which route.
+     *
+     * One generic list fetcher writes exactly that, and left in it silently
+     * excused every two-segment route in the codebase — including a dead
+     * duplicate of recurring invoices in the paid module. A deeper path with a
+     * variable at the front, like `/api/${holder}/${id}/receipt`, still counts:
+     * the segments after it identify the route.
+     */
+    if (shape.length === 2 && shape[1] === "*") continue;
+    asked.push(shape);
   }
   return asked;
 }

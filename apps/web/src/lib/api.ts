@@ -172,6 +172,11 @@ export type Account = {
   description?: string | null;
   parentId?: string | null;
   archivedAt?: string | null;
+  /** Whether the business banks with it, and which bank. */
+  isBank?: boolean;
+  bankName?: string | null;
+  /** Only ever the last four digits — enough to recognise, useless to steal. */
+  bankAccountLast4?: string | null;
 };
 
 export type Expense = {
