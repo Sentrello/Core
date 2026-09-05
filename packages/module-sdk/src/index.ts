@@ -192,6 +192,13 @@ export * from "./attachments";
 export * from "./csv";
 export * from "./images";
 export * from "./public-endpoints";
+/**
+ * Read from disk, so it is imported by tests rather than by a running
+ * instance. Exported from here because Core's modules and the commercial ones
+ * have the same shape of hole, and a second copy is a copy that gets the
+ * matching subtly wrong in one repository only.
+ */
+export * from "./reachability";
 export * as secrets from "./secrets";
 export * from "./stripe-signature";
 export * from "./summaries";

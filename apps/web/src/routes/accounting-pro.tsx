@@ -1218,11 +1218,262 @@ function ClosingTheBooks() {
   );
 }
 
+/**
+ * The reports a licence pays for that nothing could open.
+ *
+ * Seven Pro reports are built. Three reached a screen — cash flow, trial
+ * balance and who owes us, all on the dashboard — and four did not: what tax
+ * is owed, where the money goes by category, who this business owes, and the
+ * ledger as a file. Every one of them was written, gated, tested against its
+ * numbers, and described in the plan as built.
+ *
+ * The tax summary is the one that matters most. It is what a return is filed
+ * from, and a business paying for the accounting tier could not open it.
+ */
+type TaxSummary = {
+  chargedCents: number;
+  reclaimedCents: number;
+  dueCents: number;
+};
+
+type CategoryTotals = {
+  income: { code: string; name: string; cents: number }[];
+  expenses: { code: string; name: string; cents: number }[];
+};
+
+type Payable = {
+  bills: {
+    id: string;
+    number: string | null;
+    vendorName: string | null;
+    dueDate: string | null;
+    balanceDue: number;
+    ageDays: number;
+  }[];
+  aging: {
+    current: number;
+    days30: number;
+    days60: number;
+    days90plus: number;
+  };
+  totalCents: number;
+};
+
+const AGE_BUCKETS: [keyof Payable["aging"], string][] = [
+  ["current", "Not yet due"],
+  ["days30", "1–30 days"],
+  ["days60", "31–60 days"],
+  ["days90plus", "Over 60 days"],
+];
+
+export function Reports() {
+  const [from, setFrom] = useState(`${new Date().getFullYear()}-01-01`);
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const range = `from=${from}&to=${to}`;
+
+  const tax = useQuery({
+    queryKey: ["tax-summary", from, to],
+    queryFn: () => api<TaxSummary>(`/api/reports/tax-summary?${range}`),
+  });
+  const categories = useQuery({
+    queryKey: ["by-category", from, to],
+    queryFn: () => api<CategoryTotals>(`/api/reports/by-category?${range}`),
+  });
+  const payable = useQuery({
+    queryKey: ["accounts-payable"],
+    queryFn: () => api<Payable>("/api/reports/accounts-payable"),
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="grid gap-3 sm:grid-cols-[10rem_10rem_auto] sm:items-end">
+          <Field label="From">
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </Field>
+          {/* A plain link, not a fetch: the response is a file with its own
+              filename, and the browser already knows how to save one. */}
+          <a
+            className="text-sm underline"
+            href={`/api/reports/export.csv?${range}`}
+          >
+            Download the ledger as a spreadsheet
+          </a>
+        </div>
+        <p className="mt-2 text-xs" style={muted}>
+          Every entry between those dates, with its account and its side. What
+          an accountant asks for when the answer cannot be “log in to our
+          thing”.
+        </p>
+      </Card>
+
+      <Card>
+        <h2 className="mb-2 font-semibold text-sm">Tax</h2>
+        {tax.isLoading ? <Loading /> : null}
+        {tax.error ? <ErrorNote error={tax.error} /> : null}
+        {tax.data ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Figure label="Charged on sales" cents={tax.data.chargedCents} />
+              <Figure
+                label="Reclaimed on purchases"
+                cents={tax.data.reclaimedCents}
+              />
+              <Figure label="Owed" cents={tax.data.dueCents} emphasise />
+            </div>
+            <p className="mt-2 text-xs" style={muted}>
+              Read from the tax account in the ledger over the dates above, not
+              recomputed from invoices — so it agrees with the books rather than
+              with a second opinion about them. Check it against the return
+              before filing.
+            </p>
+          </>
+        ) : null}
+      </Card>
+
+      <Card>
+        <h2 className="mb-2 font-semibold text-sm">Where the money goes</h2>
+        {categories.isLoading ? <Loading /> : null}
+        {categories.error ? <ErrorNote error={categories.error} /> : null}
+        {categories.data ? (
+          <>
+            <Breakdown title="Income" rows={categories.data.income} />
+            <Breakdown title="Expenses" rows={categories.data.expenses} />
+          </>
+        ) : null}
+      </Card>
+
+      <Card>
+        <h2 className="mb-2 font-semibold text-sm">What this business owes</h2>
+        {payable.isLoading ? <Loading /> : null}
+        {payable.error ? <ErrorNote error={payable.error} /> : null}
+        {payable.data ? (
+          payable.data.bills.length === 0 ? (
+            <Empty title="Nothing outstanding">
+              Approved bills with a balance appear here, oldest first.
+            </Empty>
+          ) : (
+            <>
+              <div className="mb-3 grid gap-3 sm:grid-cols-4">
+                {AGE_BUCKETS.map(([key, label]) => (
+                  <Figure
+                    key={key}
+                    label={label}
+                    cents={payable.data.aging[key]}
+                  />
+                ))}
+              </div>
+              <Table
+                headers={[
+                  "Bill",
+                  "Supplier",
+                  "Due",
+                  { label: "Outstanding", money: true },
+                  "Age",
+                ]}
+              >
+                {payable.data.bills.map((bill) => (
+                  <Row key={bill.id}>
+                    <td className="px-3 py-2">{bill.number ?? "—"}</td>
+                    <td className="px-3 py-2">{bill.vendorName ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      {bill.dueDate ? formatDate(bill.dueDate) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatMoney(bill.balanceDue)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {bill.ageDays > 0 ? `${bill.ageDays} days` : "—"}
+                    </td>
+                  </Row>
+                ))}
+              </Table>
+            </>
+          )
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
+/** One figure, in the shape the summary screen uses. */
+function Figure({
+  label,
+  cents,
+  emphasise,
+}: {
+  label: string;
+  cents: number;
+  emphasise?: boolean;
+}) {
+  return (
+    <Card>
+      <p className="text-xs" style={muted}>
+        {label}
+      </p>
+      <p
+        className={
+          emphasise
+            ? "font-semibold text-xl tabular-nums"
+            : "text-lg tabular-nums"
+        }
+      >
+        {formatMoney(cents)}
+      </p>
+    </Card>
+  );
+}
+
+function Breakdown({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: { code: string; name: string; cents: number }[];
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="mb-2 text-sm" style={muted}>
+        No {title.toLowerCase()} in this period.
+      </p>
+    );
+  }
+  return (
+    <div className="mb-3">
+      <p className="mb-1 font-medium text-sm">{title}</p>
+      <Table headers={["Account", { label: "Total", money: true }]}>
+        {rows.map((row) => (
+          <Row key={row.code}>
+            <td className="px-3 py-2">
+              <span style={muted}>{row.code}</span> {row.name}
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums">
+              {formatMoney(row.cents)}
+            </td>
+          </Row>
+        ))}
+      </Table>
+    </div>
+  );
+}
+
 export function TaxAndCurrency() {
   const qc = useQueryClient();
   const [regime, setRegime] = useState("uk");
   const [code, setCode] = useState("");
   const [rate, setRate] = useState("");
+  const [base, setBaseDraft] = useState("");
 
   const taxes = useQuery({
     queryKey: ["invoicing-taxes"],
@@ -1268,6 +1519,29 @@ export function TaxAndCurrency() {
       setCode("");
       setRate("");
       qc.invalidateQueries({ queryKey: ["currencies"] });
+    },
+  });
+
+  /**
+   * What the books are kept in.
+   *
+   * The screen has always *shown* the base currency and never let anybody set
+   * it, so an instance kept its books in whatever it was created with. The
+   * route refuses the change once anything is posted — reinterpreting entries
+   * converted into the old currency would restate every report the business
+   * has ever run — and that refusal is worth showing rather than hiding the
+   * field, because "why can I not change this" has an answer.
+   */
+  const setBase = useMutation({
+    mutationFn: () =>
+      api("/api/accounting/currencies/base", {
+        method: "PUT",
+        body: JSON.stringify({ code: base.trim().toUpperCase() }),
+      }),
+    onSuccess: () => {
+      setBaseDraft("");
+      // Every figure on every report is denominated in it.
+      qc.invalidateQueries();
     },
   });
 
@@ -1392,6 +1666,28 @@ export function TaxAndCurrency() {
           Currency — the books are kept in{" "}
           {currencies.data?.baseCurrency ?? "…"}
         </p>
+        <div className="mb-3 grid gap-3 sm:grid-cols-[8rem_auto] sm:items-end">
+          <Field
+            label="Keep the books in"
+            hint="Three letters, and only before anything is posted."
+          >
+            <Input
+              value={base}
+              onChange={(e) => setBaseDraft(e.target.value)}
+              placeholder={currencies.data?.baseCurrency ?? "GBP"}
+              maxLength={3}
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button
+              onClick={() => setBase.mutate()}
+              disabled={setBase.isPending || base.trim().length !== 3}
+            >
+              {setBase.isPending ? "Changing…" : "Change"}
+            </Button>
+          </div>
+        </div>
+        {setBase.error ? <ErrorNote error={setBase.error} /> : null}
         <div className="grid gap-3 sm:grid-cols-[8rem_10rem_auto]">
           <Field label="Currency">
             <Input

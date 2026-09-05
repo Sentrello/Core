@@ -22,6 +22,7 @@ import {
   Bills,
   Budgets,
   Receipt,
+  Reports,
   TaxAndCurrency,
 } from "./accounting-pro";
 
@@ -32,7 +33,7 @@ import {
  * switched between, and the application maps nav ids to screens in one place.
  * Re-exporting keeps that one import rather than two.
  */
-export { Banking, Bills, Budgets, TaxAndCurrency };
+export { Banking, Bills, Budgets, Reports, TaxAndCurrency };
 
 /**
  * The books.

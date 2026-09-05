@@ -16,6 +16,7 @@ import {
   Budgets,
   Journal,
   Money,
+  Reports,
   Summary,
   TaxAndCurrency,
 } from "./routes/accounting";
@@ -91,6 +92,7 @@ const SCREENS: Record<string, () => React.ReactElement | null> = {
   "accounting-bills": Bills,
   "accounting-banking": Banking,
   "accounting-budgets": Budgets,
+  "accounting-reports": Reports,
   "accounting-tax": TaxAndCurrency,
   forms: Forms,
   /**

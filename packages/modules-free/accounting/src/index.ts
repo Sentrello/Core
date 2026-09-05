@@ -78,6 +78,15 @@ export default defineModule({
         { id: "accounting-bills", label: "Bills", icon: "receipt" },
         { id: "accounting-banking", label: "Banking", icon: "wallet" },
         { id: "accounting-budgets", label: "Budgets", icon: "chart" },
+        /**
+         * The four reports that had no page.
+         *
+         * Tax owed, where the money goes, what the business owes, and the
+         * ledger as a file. All built, all gated, all described as done, and
+         * none of them reachable — the tax summary especially, which is what a
+         * return is filed from.
+         */
+        { id: "accounting-reports", label: "Reports", icon: "chart" },
         { id: "accounting-tax", label: "Tax and currency", icon: "settings" },
       ].entries()) {
         ctx.registerNav({

@@ -156,7 +156,18 @@ export const contacts = pgTable(
     hasNewsletter: boolean("has_newsletter").notNull().default(false),
     /** Used only to pick the right placeholder face, never for anything else. */
     gender: text("gender"),
-    // for customer-portal row scoping: links a portal user to their contact record
+    /**
+     * Nothing writes this, and as of 2026-09-05 nothing reads it.
+     *
+     * It was read by one route — a customer portal listing a signed-in
+     * contact's own invoices — which therefore always returned an empty list,
+     * and which no screen ever called. The route is gone. The column and its
+     * index stay one release, as every dropped column here does, in case an
+     * instance is holding data somebody put there by hand.
+     *
+     * The portal that customers actually use is the token one at
+     * `/portal/:token`, which needs no account and does not touch this.
+     */
     portalUserId: text("portal_user_id"),
     /**
      * Bearer of this customer's portal link.

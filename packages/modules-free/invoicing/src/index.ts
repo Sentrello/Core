@@ -1723,38 +1723,5 @@ export default defineModule({
 
       return c.redirect(`/portal/${token}`, 303);
     });
-
-    ctx.app.get(
-      "/api/portal/invoices",
-      requireSession(),
-      requirePermission({ invoicing: ["read"] }),
-      async (c) => {
-        const session = c.get("session");
-        const orgId = activeOrganizationId(session);
-
-        const [contact] = await db
-          .select({ id: schema.contacts.id })
-          .from(schema.contacts)
-          .where(
-            and(
-              eq(schema.contacts.organizationId, orgId),
-              eq(schema.contacts.portalUserId, session.user.id),
-            ),
-          )
-          .limit(1);
-        if (!contact) return c.json({ invoices: [] });
-
-        const rows = await db
-          .select()
-          .from(schema.invoices)
-          .where(
-            and(
-              eq(schema.invoices.organizationId, orgId),
-              eq(schema.invoices.contactId, contact.id),
-            ),
-          );
-        return c.json({ invoices: rows });
-      },
-    );
   },
 });

@@ -413,6 +413,17 @@ function TwoFactor() {
       ?.twoFactorEnabled,
   );
 
+  const security = useQuery({
+    queryKey: ["me-security"],
+    queryFn: () =>
+      api<{
+        roles: string[];
+        twoFactorEnabled: boolean;
+        twoFactorRequired: boolean;
+        minPasswordLength: number;
+      }>("/api/users/me/security"),
+  });
+
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
@@ -473,6 +484,25 @@ function TwoFactor() {
   return (
     <Card>
       <p className="mb-2 font-medium">Two-factor authentication</p>
+
+      {/*
+        Whether this person has to have it, and has not got it.
+
+        The route saying so has existed since the module was written with
+        nothing calling it, and the whole point of it — in its own words — is
+        that somebody whose role requires a second factor is told plainly and
+        sent to set one up, rather than refused at some later moment with an
+        error about permissions. Nobody was ever told.
+      */}
+      {security.data?.twoFactorRequired && !enabled ? (
+        <p
+          className="mb-3 text-sm font-medium"
+          style={{ color: "var(--color-warning)" }}
+        >
+          Your role requires this. Until you set it up you will be refused the
+          things it protects.
+        </p>
+      ) : null}
 
       {enabled ? (
         <>
